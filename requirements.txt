@@ -1,0 +1,18 @@
+# FastAPI 后端依赖清单（pip install -r requirements.txt）
+# 安装：.venv/Scripts/python.exe -m pip install -r requirements.txt
+fastapi
+uvicorn[standard]
+sqlalchemy
+pymysql
+cryptography
+redis
+pypdf
+python-docx
+python-multipart
+openai
+httpx
+python-dotenv
+# JWT 认证
+PyJWT
+# PDF 导出（中文：reportlab 优先系统 TTF，回退内置 STSong-Light CID 字体）
+reportlab

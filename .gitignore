@@ -1,0 +1,30 @@
+# 环境配置（含密钥，不入库）
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# 后端运行期文件
+backend/uploads/
+backend/exports/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# 编辑器
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+
+# 工作区工具数据（本机记忆/临时产物，不入库）
+.workbuddy/
+.agents/
