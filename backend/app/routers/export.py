@@ -7,7 +7,7 @@
 """
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -64,6 +64,40 @@ def export_report(
     return info
 
 
+@router.get("/{report_id}/file")
+def file_report(
+    report_id: int,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    x_format: str = Header(default="docx", alias="X-Export-Format"),
+) -> FileResponse:
+    """下载报告文件（中性 URL：无扩展名、无附件头，避免浏览器下载管理器/IDM 抢先接管）。
+
+    格式通过 X-Export-Format 请求头传递（docx/pdf），路径不带 .pdf/.docx 后缀。
+    """
+    fmt = (x_format or "docx").lower()
+    if fmt not in VALID_FORMATS:
+        raise HTTPException(
+            status_code=400, detail=f"不支持的导出格式：{x_format}，仅支持 docx / pdf"
+        )
+
+    report, session = _report_or_404(db, report_id, current)
+
+    path = export_service.export_path(report.id, fmt)
+    if not path.exists():
+        # 文件被清理过则重新生成
+        try:
+            export_service.write_export(report, session, fmt)
+        except Exception as exc:
+            logger.exception("生成下载文件失败：%s", exc)
+            raise HTTPException(status_code=500, detail=f"生成下载文件失败：{exc}")
+
+    return FileResponse(
+        path=str(path),
+        media_type=_media_type(fmt),
+    )
+
+
 @router.get("/{report_id}/download")
 def download_report(
     report_id: int,
@@ -89,13 +123,17 @@ def download_report(
             logger.exception("生成下载文件失败：%s", exc)
             raise HTTPException(status_code=500, detail=f"生成下载文件失败：{exc}")
 
-    media = (
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        if fmt == "docx"
-        else "application/pdf"
-    )
+    # 注意：不传 filename（不加 Content-Disposition: attachment）。
+    # Chrome 对带附件头的 fetch 会直接走"下载"并拒绝交给 XHR（ERR_BLOCKED_BY_CLIENT），
+    # 前端用 blob + <a download> 方式保存并在 JS 侧命名，效果一致。
     return FileResponse(
         path=str(path),
-        media_type=media,
-        filename=f"面试评估报告_{report.id}.{fmt}",
+        media_type=_media_type(fmt),
     )
+
+
+def _media_type(fmt: str) -> str:
+    """按格式返回 MIME。"""
+    if fmt == "docx":
+        return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    return "application/pdf"

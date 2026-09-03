@@ -39,7 +39,33 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
     _migrate_users_is_admin()
+    _migrate_session_fields()
     _seed_admin()
+
+
+def _migrate_session_fields() -> None:
+    """增量迁移：interview_sessions 表补 difficulty/education 列（难度与学历门槛）。"""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    if "interview_sessions" not in insp.get_table_names():
+        return
+    columns = {c["name"] for c in insp.get_columns("interview_sessions")}
+    plan = []
+    if "difficulty" not in columns:
+        plan.append(("difficulty", "VARCHAR(16)", "medium"))
+    if "education" not in columns:
+        plan.append(("education", "VARCHAR(16)", "any"))
+    if not plan:
+        return
+    with engine.begin() as conn:
+        for name, ctype, default in plan:
+            conn.execute(
+                text(
+                    f"ALTER TABLE interview_sessions ADD COLUMN {name} {ctype} "
+                    f"NOT NULL DEFAULT '{default}'"
+                )
+            )
 
 
 def _migrate_users_is_admin() -> None:

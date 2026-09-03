@@ -55,6 +55,9 @@ ROLE_NAMES = {
     "stress": "压力面",
 }
 
+DIFF_NAMES = {"easy": "简单", "medium": "中等", "hard": "困难"}
+EDU_NAMES = {"any": "不限", "college": "大专", "bachelor": "本科", "master": "硕士"}
+
 
 class QuestionAgent(BaseAgent):
     """面试题生成 Agent。"""
@@ -67,10 +70,13 @@ class QuestionAgent(BaseAgent):
         job_title: str,
         role: str = "technical",
         resume_analysis: dict | None = None,
+        difficulty: str = "medium",
+        education: str = "any",
     ) -> dict:
         """生成题卡。
 
         resume_analysis 为简历分析 Agent 的输出（可为 None，无简历时按岗位通用出题）。
+        difficulty/education 决定出题深度与考察定位。
         """
         resume_part = ""
         if resume_analysis:
@@ -83,10 +89,17 @@ class QuestionAgent(BaseAgent):
             )
 
         role_part = f"【面试官角色】{ROLE_NAMES.get(role, role)}"
+        level_part = (
+            f"【面试难度】{DIFF_NAMES.get(difficulty, difficulty)}——"
+            f"按难度调节题目深度与追问强度"
+            f"\n【学历门槛】{EDU_NAMES.get(education, education)}——"
+            "出题与该学历定位匹配"
+        )
 
         prompt = (
             f"【目标岗位】{job_title}\n"
             f"{role_part}\n"
+            f"{level_part}\n"
             f"{resume_part}"
             "\n请生成这套面试的完整题卡。"
         )

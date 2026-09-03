@@ -56,6 +56,14 @@ class InterviewSession(Base):
     interviewer_role: Mapped[str] = mapped_column(
         String(32), default="technical", nullable=False, comment="面试官角色：technical/HR/stress"
     )
+    difficulty: Mapped[str] = mapped_column(
+        String(16), default="medium", server_default="medium", nullable=False,
+        comment="面试难度：easy/medium/hard",
+    )
+    education: Mapped[str] = mapped_column(
+        String(16), default="any", server_default="any", nullable=False,
+        comment="学历门槛：any/college/bachelor/master",
+    )
     resume_text: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="简历文本（供 Agent 使用）"
     )

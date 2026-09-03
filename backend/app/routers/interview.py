@@ -13,6 +13,7 @@ SSE 事件设计（前端按 data: 逐行解析）：
 """
 import json
 import logging
+import threading
 from datetime import datetime
 from typing import AsyncGenerator
 
@@ -24,11 +25,16 @@ from sqlalchemy.orm import Session
 
 from .. import config
 from ..auth import get_current_user
-from ..database import get_db
+from ..database import SessionLocal, get_db
 from ..models import ChatMessage, InterviewReport, InterviewSession, User
 from ..redis_client import redis_client
 from ..services.agents.pipeline import InterviewPipeline, PipelineError
-from ..services.agents.question_agent import QuestionAgent, ROLE_NAMES
+from ..services.agents.question_agent import (
+    DIFF_NAMES,
+    EDU_NAMES,
+    QuestionAgent,
+    ROLE_NAMES,
+)
 from ..services.report_service import generate_and_store_report
 
 logger = logging.getLogger(__name__)
@@ -37,6 +43,11 @@ router = APIRouter()
 
 # 可选角色集合（对外只暴露这三个）
 VALID_ROLES = {"technical", "HR", "stress"}
+VALID_DIFFICULTY = {"easy", "medium", "hard"}
+VALID_EDUCATION = {"any", "college", "bachelor", "master"}
+
+# 报告生成中的会话（单进程内防重；进程重启后由幂等逻辑兜底）
+_REPORT_LOCKS: dict[int, bool] = {}
 
 
 # ---------- 请求 / 响应模型 ----------
@@ -44,6 +55,8 @@ class StartRequest(BaseModel):
     job_title: str = Field(min_length=1, max_length=255, description="目标岗位，如：Python 后端")
     role: str = Field(default="technical", description="面试官角色：technical/HR/stress")
     resume_id: str = Field(default="", description="简历分析缓存 id（来自 /api/resume/upload）")
+    difficulty: str = Field(default="medium", description="面试难度：easy/medium/hard")
+    education: str = Field(default="any", description="学历门槛：any/college/bachelor/master")
 
 
 class ChatRequest(BaseModel):
@@ -90,14 +103,88 @@ def _require_session(db: Session, session_id: int, user: User) -> InterviewSessi
     return s
 
 
-def _opening_message(session_id: int, role: str, job_title: str) -> str:
+def _opening_message(
+    session_id: int,
+    role: str,
+    job_title: str,
+    difficulty: str = "medium",
+    education: str = "any",
+) -> str:
     """构造开场白文本（不调大模型，保证 start 稳定快速）。"""
     role_name = ROLE_NAMES.get(role, role)
+    level = (
+        f"本场将按「{DIFF_NAMES.get(difficulty, difficulty)}难度 / "
+        f"学历{EDU_NAMES.get(education, education)}」的定位出题。"
+    )
     return (
-        f"你好，我是本次模拟面试的{role_name}面试官，岗位是{job_title}。"
+        f"你好，我是本次模拟面试的{role_name}面试官，岗位是{job_title}。{level}"
         "我们先做个自我介绍吧：请用 1 分钟时间介绍一下你自己，"
         "包括你的技术栈、主要项目和擅长的方向。"
     )
+
+
+def _spawn_report_builder(
+    session_id: int,
+    session: InterviewSession,
+    conversation: list[dict] | None = None,
+    expression_seq: list[dict] | None = None,
+    *,
+    db: Session | None = None,
+) -> None:
+    """按需拉起后台报告生成（带进程内防重）。"""
+    if _REPORT_LOCKS.get(session_id):
+        return
+    meta = redis_client.get_session_meta(session_id) or {}
+    resume_text = session.resume_text or ""
+    resume_summary = meta.get("resume_summary") or ""
+    if conversation is None and db is not None:
+        conversation = _load_context_from_db(db, session_id)
+    _REPORT_LOCKS[session_id] = True
+    threading.Thread(
+        target=_build_report_async,
+        args=(
+            session_id,
+            session.interviewer_role,
+            session.job_title,
+            resume_text,
+            resume_summary,
+            conversation or [],
+            expression_seq or meta.get("expression_seq") or [],
+        ),
+        daemon=True,
+    ).start()
+
+
+def _build_report_async(
+    session_id: int,
+    role: str,
+    job_title: str,
+    resume_text: str,
+    resume_summary: str,
+    conversation: list[dict],
+    expression_seq: list[dict],
+) -> None:
+    """后台生成评分报告并落库（独立数据库会话，不占用请求连接）。"""
+    db = SessionLocal()
+    try:
+        generate_and_store_report(
+            db,
+            session_id=session_id,
+            role=role,
+            job_title=job_title,
+            resume_text=resume_text,
+            resume_summary=resume_summary,
+            conversation=conversation,
+            expression_seq=expression_seq,
+        )
+        logger.info("后台评分报告已生成 session_id=%s", session_id)
+    except Exception:  # noqa: BLE001
+        logger.exception("后台评分报告生成异常 session_id=%s", session_id)
+    finally:
+        try:
+            db.close()
+        finally:
+            _REPORT_LOCKS.pop(session_id, None)
 
 
 # ---------- 路由 ----------
@@ -124,6 +211,12 @@ def start_interview(
     role = body.role
     if role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"不支持的面试官角色：{role}")
+    difficulty = body.difficulty
+    if difficulty not in VALID_DIFFICULTY:
+        raise HTTPException(status_code=400, detail=f"不支持的面试难度：{difficulty}")
+    education = body.education
+    if education not in VALID_EDUCATION:
+        raise HTTPException(status_code=400, detail=f"不支持的学历门槛：{education}")
 
     # 取简历分析结果（缓存中找；不存在则无简历模式）
     resume_analysis = None
@@ -142,6 +235,8 @@ def start_interview(
         user_id=current.id,
         job_title=body.job_title,
         interviewer_role=role,
+        difficulty=difficulty,
+        education=education,
         resume_text=resume_text or None,
         status="in_progress",
     )
@@ -149,12 +244,14 @@ def start_interview(
     db.commit()
     db.refresh(session)
 
+    # 同步生成面试题卡：失败则回滚会话（原行为，保证进入面试即有完整题卡）
     try:
-        # 面试题生成 Agent 出题卡
         card = QuestionAgent().generate_card(
             job_title=body.job_title,
             role=role,
             resume_analysis=resume_analysis,
+            difficulty=difficulty,
+            education=education,
         )
     except Exception as exc:
         # 题卡失败则将会话回滚删除，避免留下脏数据
@@ -162,7 +259,6 @@ def start_interview(
         db.commit()
         logger.exception("题卡生成失败")
         raise HTTPException(status_code=502, detail=f"题卡生成失败：{exc}")
-
     redis_client.set_question_card(session.id, card)
 
     # 会话元信息（供面试官/评分使用）
@@ -170,6 +266,8 @@ def start_interview(
         "job_title": body.job_title,
         "role": role,
         "resume_id": body.resume_id,
+        "difficulty": difficulty,
+        "education": education,
     }
     if resume_analysis:
         meta["resume_summary"] = (
@@ -178,8 +276,8 @@ def start_interview(
         )
     redis_client.set_session_meta(session.id, meta)
 
-    # 开场白
-    opening = _opening_message(session.id, role, body.job_title)
+    # 开场白（本地模板，不等待大模型）
+    opening = _opening_message(session.id, role, body.job_title, difficulty, education)
 
     # 落库开场白（assistant）便于历史回看
     db.add(ChatMessage(session_id=session.id, role="assistant", content=opening, reference=""))
@@ -280,12 +378,17 @@ def chat(
     )
 
     async def gen() -> AsyncGenerator[str, None]:
-        # 逐字流式推送（打字机效果）
-        for i, ch in enumerate(reply):
-            if i % 2 == 0:
-                yield f"event: message\ndata: {json.dumps({'delta': ch}, ensure_ascii=False)}\n\n"
-            else:
-                yield f"data: {json.dumps({'delta': ch}, ensure_ascii=False)}\n\n"
+        # 打字机：整段已生成，这里按"小批字符 + 极短节流"推送，前端能看到逐字浮现
+        chunk = 3           # 每批字符数（越大越快）
+        interval = 0.02     # 每批间隔（秒）：打字机明显但不拖沓（长文约 3-4 秒推完）
+        import asyncio
+
+        for i in range(0, len(reply), chunk):
+            piece = reply[i : i + chunk]
+            # 首片带 event 头，其余只发 data（前端按 data: 行解析，event 仅语义标记）
+            head = "event: message\n" if i == 0 else ""
+            yield f"{head}data: {json.dumps({'delta': piece}, ensure_ascii=False)}\n\n"
+            await asyncio.sleep(interval)
         yield f"event: done\ndata: {done_payload}\n\n"
 
     return StreamingResponse(
@@ -311,11 +414,13 @@ def end_interview(
     if session.user_id != current.id:
         raise HTTPException(status_code=403, detail="无权访问该会话")
 
-    # 已是 completed 且已有报告 → 幂等返回
+    # 幂等判断
     existing_report = db.scalar(
         select(InterviewReport).where(InterviewReport.session_id == session_id)
     )
     already = session.status == "completed"
+
+    # 已有报告 → 幂等返回
     if already and existing_report:
         redis_client.delete_session(session_id)
         return {
@@ -328,7 +433,23 @@ def end_interview(
             "report": _report_payload(existing_report),
         }
 
-    # 加载完整对话（Redis 优先，回退 MySQL）
+    # 已 completed 但报告还没写完（后台生成中）→ 幂等返回"生成中"，不重复触发
+    if already and not existing_report:
+        if not _REPORT_LOCKS.get(session_id):
+            # 极端情况：进程重启后锁丢失，重新拉起生成
+            _spawn_report_builder(session_id, session, db=db)
+        return {
+            "session_id": session_id,
+            "status": session.status,
+            "already_completed": True,
+            "message_count": _message_count(db, session_id),
+            "expression_count": len(body.expression_seq),
+            "report_id": None,
+            "report": None,
+            "generating": True,
+        }
+
+    # 首次结束：加载完整对话（Redis 优先，回退 MySQL）
     conversation = redis_client.get_session_context(session_id)
     if conversation is None:
         conversation = _load_context_from_db(db, session_id)
@@ -342,35 +463,28 @@ def end_interview(
     # 表情序列（body 优先，其次会话 meta——二次 end 且本次未带表情时用已存的）
     expression_seq = body.expression_seq or meta.get("expression_seq") or []
 
-    # 生成报告并落库
-    report = generate_and_store_report(
-        db,
-        session_id=session_id,
-        role=session.interviewer_role,
-        job_title=session.job_title,
-        resume_text=resume_text,
-        resume_summary=resume_summary,
+    # 先标记完成并提交（让报告页/历史立即可进，避免重复触发）
+    session.status = "completed"
+    session.ended_at = datetime.now()
+    db.commit()
+
+    # 报告改后台生成：接口立刻返回，页面进入"生成中"并轮询
+    _spawn_report_builder(
+        session_id,
+        session,
         conversation=conversation,
         expression_seq=expression_seq,
     )
 
-    # 标记完成
-    if not already:
-        session.status = "completed"
-        session.ended_at = datetime.now()
-        db.commit()
-
-    # 清理 Redis 会话缓存（保留 meta 中可能需要的表情，但报告已入库不再需要）
-    redis_client.delete_session(session_id)
-
     return {
         "session_id": session_id,
         "status": session.status,
-        "already_completed": already,
+        "already_completed": False,
         "message_count": _message_count(db, session_id),
         "expression_count": len(expression_seq),
-        "report_id": report.id,
-        "report": _report_payload(report),
+        "report_id": None,
+        "report": None,
+        "generating": True,
     }
 
 

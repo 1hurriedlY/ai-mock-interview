@@ -217,13 +217,24 @@ input, textarea, select {
 .muted { color: var(--text-secondary); font-size: 13px; }
 .error { color: var(--danger); font-size: 14px; }
 
-/* 兼容旧别名（部分历史组件还在用） */
---danger-soft: #fee2e2;
---danger-hover: #b91c1c;
---success-soft: #dcfce7;
---warning-soft: #fef3c7;
---radius-sm: 10px;
---radius-md: 14px;
---radius-lg: 18px;
---radius-pill: 999px;
---bg-soft: #f6f7fb;
+/* 兼容旧别名（部分历史组件还在用）——历史文件把这段写在了规则体外，这里收进 :root */
+:root {
+  --danger-soft: #fee2e2;
+  --danger-hover: #b91c1c;
+  --success-soft: #dcfce7;
+  --warning-soft: #fef3c7;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+  --bg-soft: #f6f7fb;
+}
+
+/* 可选「减少页面动效」：设置里开启后写入 <html class="reduce-motion"> */
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  transition: none !important;
+  animation: none !important;
+}
+html.reduce-motion .bg-ripple { display: none; }

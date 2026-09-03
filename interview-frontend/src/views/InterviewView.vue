@@ -82,6 +82,7 @@ import { useStreamChat } from '../composables/useStreamChat'
 import { useTypewriter } from '../composables/useTypewriter'
 import { useVoice } from '../composables/useVoice'
 import { useExpression } from '../composables/useExpression'
+import { Settings } from '../utils/settings'
 import VoiceControl from '../components/VoiceControl.vue'
 import CameraPreview from '../components/CameraPreview.vue'
 
@@ -111,6 +112,10 @@ const typewriter = useTypewriter()
 const typingText = typewriter.text // 打字机当前文本（供模板渲染打字光标气泡）
 const chat = useStreamChat(sessionId.value)
 const voice = useVoice()
+// 应用“自动朗读”用户设置（默认关）
+if (voice.autoSpeak) {
+  voice.autoSpeak.value = Settings.isOn(Settings.keys.autoSpeak, false)
+}
 const expr = useExpression()
 
 const { listening } = voice
@@ -171,8 +176,8 @@ async function finishInterview() {
   try {
     // 带上本场表情时间轴（本地识别汇总，未开摄像头则空数组）
     const data = await interviewApi.end(sessionId.value, expr.sequence.value)
-    // 报告生成后跳转报告页（报告页按 session_id 加载详情）
-    if (data.report_id) {
+    // 接口立即返回（报告后台生成）：跳转报告页，由报告页轮询渲染
+    if (data.session_id) {
       router.replace({ name: 'report', params: { id: data.session_id } })
     }
   } catch (e) {

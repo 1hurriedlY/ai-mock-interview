@@ -1,10 +1,14 @@
 """管理员路由：查看与管理所有账号及其数据（仅 is_admin 可访问）。
 
-- GET    /api/admin/users        所有用户列表（含各自数据量统计）
-- DELETE /api/admin/users/{id}   删除某用户及其全部数据（管理员账号受保护）
-- GET    /api/admin/sessions     所有用户的面试会话（含所属用户名）
-- DELETE /api/admin/sessions/{id} 删除任意一场面试会话（级联消息/报告）
+- GET    /api/admin/users          所有用户列表（含各自数据量统计）
+- DELETE /api/admin/users/{id}     删除某用户及其全部数据（管理员账号受保护）
+- GET    /api/admin/sessions       所有用户的面试会话（含所属用户名）
+- GET    /api/admin/sessions/{id}  任一会话完整详情（问答 + 报告，供管理审阅）
+- DELETE /api/admin/sessions/{id}  删除任意一场面试会话（级联消息/报告）
+- GET/DELETE /api/admin/industry     全局行业调研记录
+- GET/DELETE /api/admin/project      全局求职渠道/话术记录
 """
+import json
 import logging
 from typing import Optional
 
@@ -58,6 +62,46 @@ class AdminSessionItem(BaseModel):
     ended_at: Optional[str] = None
     message_count: int
     has_report: bool
+
+
+class AdminSessionDetail(BaseModel):
+    """管理端：任一会话完整详情（问答 + 报告 + 所属用户）。"""
+
+    id: int
+    user_id: int
+    username: str
+    job_title: str
+    interviewer_role: str
+    interviewer_name: str
+    status: str
+    created_at: str
+    ended_at: Optional[str] = None
+    resume_text: Optional[str] = None
+    messages: list[dict]
+    report: Optional[dict] = None
+
+
+class AdminIndustryItem(BaseModel):
+    """全局行业调研记录。"""
+
+    id: int
+    user_id: int
+    username: str
+    industry_name: str
+    content_preview: str
+    created_at: str
+
+
+class AdminProjectItem(BaseModel):
+    """全局求职渠道 / 讲项目话术记录。"""
+
+    id: int
+    user_id: int
+    username: str
+    type: str
+    project_name: str
+    content_preview: str
+    created_at: str
 
 
 # ---------- 内部工具 ----------
@@ -200,3 +244,171 @@ def delete_any_session(
 
     logger.info("管理员 %s 删除会话 %s", current.id, session_id)
     return {"ok": True, "session_id": session_id}
+
+
+@router.get("/sessions/{session_id}", response_model=AdminSessionDetail)
+def get_any_session_detail(
+    session_id: int,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """管理审阅：任一会话的完整问答与报告内容。"""
+    session = db.get(InterviewSession, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    user = db.get(User, session.user_id)
+
+    messages = db.scalars(
+        select(ChatMessage)
+        .where(ChatMessage.session_id == session_id)
+        .order_by(ChatMessage.id)
+    ).all()
+    report = db.scalar(
+        select(InterviewReport).where(InterviewReport.session_id == session_id)
+    )
+
+    return AdminSessionDetail(
+        id=session.id,
+        user_id=session.user_id,
+        username=user.username if user else f"#{session.user_id}",
+        job_title=session.job_title,
+        interviewer_role=session.interviewer_role,
+        interviewer_name=ROLE_NAMES.get(session.interviewer_role, session.interviewer_role),
+        status=session.status,
+        created_at=_fmt(session.created_at),
+        ended_at=_fmt(session.ended_at),
+        resume_text=session.resume_text,
+        messages=[
+            {
+                "id": m.id,
+                "role": m.role,
+                "content": m.content,
+                "reference": m.reference,
+                "created_at": _fmt(m.created_at),
+            }
+            for m in messages
+        ],
+        report=_report_full(report),
+    )
+
+
+@router.get("/industry", response_model=list[AdminIndustryItem])
+def list_all_industry(
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """所有用户的行业调研记录（时间倒序）。"""
+    rows = db.execute(
+        select(IndustryReport, User.username)
+        .join(User, IndustryReport.user_id == User.id)
+        .order_by(IndustryReport.id.desc())
+        .limit(500)
+    ).all()
+    return [
+        AdminIndustryItem(
+            id=r.id,
+            user_id=r.user_id,
+            username=username,
+            industry_name=r.industry_name,
+            content_preview=_preview_json(r.content, 90),
+            created_at=_fmt(r.created_at),
+        )
+        for r, username in rows
+    ]
+
+
+@router.delete("/industry/{report_id}")
+def delete_any_industry(
+    report_id: int,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """删除任意一份行业调研记录。"""
+    report = db.get(IndustryReport, report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    db.delete(report)
+    db.commit()
+    logger.info("管理员 %s 删除行业调研 %s", current.id, report_id)
+    return {"ok": True, "id": report_id}
+
+
+@router.get("/project", response_model=list[AdminProjectItem])
+def list_all_project(
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """所有用户的求职渠道 / 讲项目话术记录（时间倒序）。"""
+    rows = db.execute(
+        select(ProjectReport, User.username)
+        .join(User, ProjectReport.user_id == User.id)
+        .order_by(ProjectReport.id.desc())
+        .limit(500)
+    ).all()
+    return [
+        AdminProjectItem(
+            id=r.id,
+            user_id=r.user_id,
+            username=username,
+            type=r.type,
+            project_name=r.project_name or "",
+            content_preview=_preview_json(r.content, 90),
+            created_at=_fmt(r.created_at),
+        )
+        for r, username in rows
+    ]
+
+
+@router.delete("/project/{report_id}")
+def delete_any_project(
+    report_id: int,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """删除任意一份求职渠道 / 话术记录。"""
+    report = db.get(ProjectReport, report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    db.delete(report)
+    db.commit()
+    logger.info("管理员 %s 删除求职记录 %s", current.id, report_id)
+    return {"ok": True, "id": report_id}
+
+
+# ---------- 详情序列化 ----------
+def _report_full(report: InterviewReport | None) -> dict | None:
+    """报告完整 JSON（审阅详情用），与 history 详情同构。"""
+    if report is None:
+        return None
+
+    def _load(raw, default):
+        if not raw:
+            return default
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return default
+
+    return {
+        "id": report.id,
+        "summary": report.summary or "",
+        "overall_score": report.overall_score,
+        "dimensions": _load(report.dimensions, []),
+        "match_analysis": _load(report.match_analysis, {}),
+        "suggestions": _load(report.suggestions, []),
+        "expression_analysis": _load(report.expression_analysis, {}),
+        "created_at": _fmt(report.created_at),
+    }
+
+
+def _preview_json(raw: str | None, limit: int) -> str:
+    """JSON 字符串的纯文本预览（剔除结构符，截取前 limit 字）。"""
+    if not raw:
+        return ""
+    try:
+        parsed = json.loads(raw)
+        text = parsed if isinstance(parsed, str) else json.dumps(parsed, ensure_ascii=False)
+    except (json.JSONDecodeError, TypeError):
+        text = raw
+    text = " ".join(text.split())
+    return text[:limit] + ("…" if len(text) > limit else "")

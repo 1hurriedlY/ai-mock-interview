@@ -49,8 +49,14 @@ export const resumeApi = {
 
 export const interviewApi = {
   roles: () => http.get('/interview/roles').then(r => r.data),
-  start: (jobTitle, role, resumeId = '') =>
-    http.post('/interview/start', { job_title: jobTitle, role, resume_id: resumeId }).then(r => r.data),
+  start: (jobTitle, role, resumeId = '', level = {}) =>
+    http.post('/interview/start', {
+      job_title: jobTitle,
+      role,
+      resume_id: resumeId,
+      difficulty: level.difficulty || 'medium',
+      education: level.education || 'any',
+    }).then(r => r.data),
   end: (sessionId, expressionSeq = []) =>
     http.post(`/interview/${sessionId}/end`, { expression_seq: expressionSeq }).then(r => r.data),
 }
@@ -69,8 +75,12 @@ export const exportApi = {
 
 // 触发浏览器下载（带 token 的下载链接无法直接 <a href>，用 fetch → blob）
 export async function downloadReport(reportId, format) {
-  const url = `/api/report/${reportId}/download?format=${format}`
-  const res = await http.get(url, { responseType: 'blob' })
+  // 中性 URL（无扩展名）+ 格式走请求头：避免 IDM/下载管理器按 .pdf 后缀抢先接管
+  const url = `/report/${reportId}/file`
+  const res = await http.get(url, {
+    responseType: 'blob',
+    headers: { 'X-Export-Format': format },
+  })
   const blobUrl = URL.createObjectURL(res.data)
   const a = document.createElement('a')
   a.href = blobUrl
@@ -101,7 +111,12 @@ export const adminApi = {
   users: () => http.get('/admin/users').then(r => r.data),
   deleteUser: (id) => http.delete(`/admin/users/${id}`).then(r => r.data),
   sessions: () => http.get('/admin/sessions').then(r => r.data),
+  sessionDetail: (id) => http.get(`/admin/sessions/${id}`).then(r => r.data),
   deleteSession: (id) => http.delete(`/admin/sessions/${id}`).then(r => r.data),
+  industry: () => http.get('/admin/industry').then(r => r.data),
+  deleteIndustry: (id) => http.delete(`/admin/industry/${id}`).then(r => r.data),
+  project: () => http.get('/admin/project').then(r => r.data),
+  deleteProject: (id) => http.delete(`/admin/project/${id}`).then(r => r.data),
 }
 
 export default http

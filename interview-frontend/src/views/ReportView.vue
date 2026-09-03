@@ -1,8 +1,18 @@
 <template>
-  <div class="report-view">
-    <div v-if="error && !report" class="card empty">
+  <div class="report-view" :class="{ 'is-gen': isGenerating && !report }">
+    <div v-if="error && !report && !isGenerating" class="card empty">
       <p class="error">{{ error }}</p>
       <router-link class="primary-link" to="/history">回历史页</router-link>
+    </div>
+
+    <!-- 报告后台生成中：骨架 + 自动轮询 -->
+    <div v-else-if="!report && isGenerating" class="card gen">
+      <div class="gen-dots"><i></i><i></i><i></i></div>
+      <h2>正在生成你的评分报告</h2>
+      <p class="gen-sub">
+        AI 正在分析你的作答并逐项评分… 生成后本页会自动展示，也可稍后从「面试历史」进入查看。
+      </p>
+      <p v-if="error" class="error gen-err">{{ error }}</p>
     </div>
 
     <template v-if="report">
@@ -85,7 +95,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { downloadReport, exportApi, historyApi } from '../api'
 import ScoreRadar from '../components/ScoreRadar.vue'
@@ -94,6 +104,7 @@ import ExpressionChart from '../components/ExpressionChart.vue'
 const route = useRoute()
 const report = ref(null)
 const error = ref('')
+const isGenerating = ref(false)
 const showRef = ref(false)
 const exportMsg = ref('')
 const references = ref([])
@@ -129,12 +140,53 @@ onMounted(async () => {
       .filter((m) => m.role === 'assistant' && m.reference)
       .map((m) => ({ q: m.content.slice(0, 60), ref: m.reference }))
     report.value = detail.report
-    if (!report.value) {
-      error.value = '该会话还没有评分报告，请先在面试中结束面试。'
+    if (report.value) return
+    // 报告尚未生成：会话已结束 → 进入"生成中"并自动轮询，直到报告就绪
+    if (detail.status === 'completed') {
+      isGenerating.value = true
+      pollReport()
+      return
     }
+    error.value = '该会话还没有评分报告，请先在面试中结束面试。'
   } catch (e) {
     error.value = e.response?.data?.detail || '加载报告失败'
   }
+})
+
+// 轮询：报告在后端后台生成，就绪后自动渲染（离开页面即停止）
+let disposed = false
+let pollTimer = null
+
+function pollReport() {
+  if (disposed) return
+  pollTimer = setTimeout(async () => {
+    try {
+      const detail = await historyApi.detail(route.params.id)
+      if (detail.report) {
+        jobTitle.value = detail.job_title || ''
+        references.value = detail.messages
+          .filter((m) => m.role === 'assistant' && m.reference)
+          .map((m) => ({ q: m.content.slice(0, 60), ref: m.reference }))
+        report.value = detail.report
+        isGenerating.value = false
+        return
+      }
+      if (detail.status !== 'completed') {
+        error.value = '该会话还没有评分报告，请先在面试中结束面试。'
+        isGenerating.value = false
+        return
+      }
+      pollReport() // 仍在生成，继续等
+    } catch (e) {
+      error.value = '报告仍在生成中，网络暂时不可用，即将自动重试…'
+      pollReport()
+    }
+  }, 1500)
+}
+
+onBeforeUnmount(() => {
+  disposed = true
+  if (pollTimer) clearTimeout(pollTimer)
 })
 
 async function doExport(format) {
@@ -153,6 +205,18 @@ async function doExport(format) {
 
 <style scoped>
 .report-view { max-width: 900px; margin: 0 auto; padding: 24px 24px 56px; }
+
+/* 生成中：整屏上下居中，卡片收窄更聚焦 */
+.report-view.is-gen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.report-view.is-gen .gen {
+  width: min(560px, 100%);
+  margin: 0 auto;
+}
 .report-header {
   display: flex;
   justify-content: space-between;
@@ -208,6 +272,45 @@ async function doExport(format) {
   margin-bottom: 16px;
 }
 .empty { text-align: center; padding: 48px; }
+
+/* 报告生成中骨架 */
+.gen {
+  text-align: center;
+  padding: 56px 24px;
+}
+.gen-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.gen-dots i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ink);
+  opacity: 0.25;
+  animation: gen-bounce 1.2s var(--ease) infinite;
+}
+.gen-dots i:nth-child(2) { animation-delay: 0.15s; }
+.gen-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes gen-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.25; }
+  30% { transform: translateY(-6px); opacity: 1; }
+}
+.gen h2 {
+  font-size: 20px;
+  font-weight: 720;
+  color: var(--ink);
+}
+.gen-sub {
+  margin: 10px auto 0;
+  max-width: 46ch;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  line-height: 1.8;
+}
+.gen-err { margin-top: 14px; }
 .error { color: var(--danger); }
 .primary-link { display: inline-block; margin-top: 12px; color: var(--ink); }
 .score-card {

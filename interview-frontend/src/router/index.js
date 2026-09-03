@@ -15,6 +15,7 @@ const routes = [
   { path: '/history', name: 'history', component: () => import('../views/HistoryView.vue') },
   { path: '/industry', name: 'industry', component: () => import('../views/IndustryView.vue') },
   { path: '/project', name: 'project', component: () => import('../views/ProjectView.vue') },
+  { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue') },
   { path: '/admin', name: 'admin', component: () => import('../views/AdminView.vue'), meta: { admin: true } },
 ]
 
