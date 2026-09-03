@@ -129,27 +129,27 @@ async function startInterview() {
 </script>
 
 <style scoped>
-.home-view { max-width: 760px; margin: 0 auto; padding: 24px 24px 64px; }
+.home-view { max-width: 960px; margin: 0 auto; padding: 24px 32px 64px; }
 
-.hero { text-align: left; margin-bottom: 18px; }
+.hero { text-align: left; margin-bottom: 22px; }
 .hero h1 {
-  font-size: 26px;
-  font-weight: 760;
+  font-size: 30px;
+  font-weight: 780;
   letter-spacing: -0.015em;
   color: var(--ink);
   line-height: 1.2;
 }
 .hero p {
-  margin-top: 8px;
+  margin-top: 10px;
   color: var(--text-secondary);
-  font-size: 14px;
-  max-width: 56ch;
-  line-height: 1.65;
+  font-size: 15px;
+  max-width: 60ch;
+  line-height: 1.7;
 }
 
-/* "准备台"浮卡：Lollipop 同款白色浮在渐变底上 */
+/* "准备台"浮卡：更宽敞 */
 .deck {
-  padding: 20px 22px;
+  padding: 26px 30px;
 }
 .zone { padding: 4px 0; }
 .zone-head {
@@ -160,20 +160,20 @@ async function startInterview() {
   margin-bottom: 4px;
 }
 .zone-head h2 {
-  font-size: 15px;
+  font-size: 16.5px;
   font-weight: 700;
   letter-spacing: -0.005em;
   color: var(--ink);
 }
 .zone-sub {
-  margin-top: 4px;
+  margin-top: 5px;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 14px;
 }
 .divider {
   height: 1px;
   background: var(--border-soft);
-  margin: 16px 0;
+  margin: 20px 0;
 }
 
 /* chip / status */
@@ -212,15 +212,15 @@ async function startInterview() {
 .upload-row input { font-size: 13px; color: var(--text-secondary); }
 
 /* 表单 */
-.field { margin-top: 8px; }
+.field { margin-top: 12px; }
 .field input {
   width: 100%;
-  height: 40px;
-  padding: 0 14px;
+  height: 46px;
+  padding: 0 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-input);
   background: var(--bg-soft);
-  font-size: 14px;
+  font-size: 15px;
   transition: var(--transition);
 }
 .field input:focus {
@@ -235,12 +235,12 @@ async function startInterview() {
 .roles {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-top: 10px;
+  gap: 12px;
+  margin-top: 14px;
 }
 .role {
   text-align: left;
-  padding: 12px 14px;
+  padding: 16px 18px;
   background: var(--card);
   cursor: pointer;
   border: 1px solid var(--border-soft);
@@ -249,8 +249,8 @@ async function startInterview() {
 }
 .role:hover { border-color: var(--ink); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
 .role:active { transform: translateY(0) scale(0.985); }
-.role strong { display: block; font-size: 14px; color: var(--ink); }
-.role span { display: block; margin-top: 3px; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+.role strong { display: block; font-size: 15px; color: var(--ink); }
+.role span { display: block; margin-top: 4px; font-size: 13px; color: var(--text-secondary); line-height: 1.55; }
 .role.active {
   background: var(--ink-soft);
   border-color: var(--ink);
@@ -262,13 +262,13 @@ async function startInterview() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 16px;
   flex-wrap: wrap;
 }
-.action-hint { color: var(--text-muted); font-size: 12.5px; }
+.action-hint { color: var(--text-muted); font-size: 13px; }
 
 @media (max-width: 640px) {
-  .hero h1 { font-size: 22px; }
+  .hero h1 { font-size: 24px; }
   .roles { grid-template-columns: 1fr; }
   .deck { padding: 18px 18px; }
 }

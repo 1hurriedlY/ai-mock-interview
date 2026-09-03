@@ -1,6 +1,7 @@
 <template>
-  <div class="login-view">
-    <form class="login-card" @submit.prevent="submit">
+  <div ref="root" class="login-view">
+    <router-link class="back-btn" to="/">← 返回主界面</router-link>
+    <form class="login-card glass" data-reveal @submit.prevent="submit">
       <div class="brand-mark">
         <span class="brand-emoji">●‿●</span>
       </div>
@@ -27,13 +28,15 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authApi } from '../api'
 import { setAuth } from '../store/auth'
+import { bindReveal } from '../utils/reveal'
 
 const route = useRoute()
 const router = useRouter()
+const root = ref(null)
 
 const isLogin = ref(true)
 const username = ref('')
@@ -42,6 +45,10 @@ const loading = ref(false)
 const error = ref('')
 
 const canSubmit = computed(() => username.value.length >= 2 && password.value.length >= 6)
+
+onMounted(() => {
+  bindReveal(root.value)
+})
 
 async function submit() {
   if (!canSubmit.value || loading.value) return
@@ -62,6 +69,7 @@ async function submit() {
 
 <style scoped>
 .login-view {
+  position: relative;
   width: 100%;
   min-height: 100vh;
   display: flex;
@@ -69,10 +77,38 @@ async function submit() {
   justify-content: center;
   padding: 24px 20px;
 }
+/* 左上角悬浮返回钮（卡片框外，毛玻璃胶囊） */
+.back-btn {
+  position: absolute;
+  top: 22px;
+  left: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-chip);
+  background: rgba(255, 255, 255, 0.7);
+  -webkit-backdrop-filter: saturate(140%) blur(12px);
+  backdrop-filter: saturate(140%) blur(12px);
+  border: 1px solid var(--border-soft);
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition);
+}
+.back-btn:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+.back-btn:active { transform: scale(0.97); }
 .login-card {
   width: 100%;
   max-width: 400px;
-  background: var(--card);
+  background: transparent;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-panel);
   box-shadow: var(--shadow-lg);
@@ -131,7 +167,11 @@ input:focus {
 }
 input::placeholder { color: var(--text-muted); }
 .error { color: var(--danger); font-size: 13px; margin-top: 10px; }
-button.primary { width: 100%; margin-top: 18px; }
+/* 提交按钮：与密码框拉开距离（类名已是 btn btn-primary btn-lg，按 type 匹配） */
+.login-card button[type='submit'] {
+  width: 100%;
+  margin-top: 30px;
+}
 .switch {
   color: var(--text-secondary);
   font-size: 13px;

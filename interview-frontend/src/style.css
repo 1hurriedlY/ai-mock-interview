@@ -99,13 +99,17 @@ input, textarea, select {
 .page-enter-from,
 .page-leave-to { opacity: 0; transform: translateY(6px); }
 
-/* 减弱动态效果：全部过渡/动画降级 */
+/* 动效开关：默认始终播放（用户要求强制动画）。如需尊重系统"减弱动态效果"，
+ * 在 <html> 上加 class="reduce-motion" 并取消下面两行注释即可。
+ */
+/*
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after {
     transition: none !important;
     animation: none !important;
   }
 }
+*/
 
 /* 背景动态涟漪（App.vue 注入装饰层；z 轴置于内容之下、不拦截点击） */
 .bg-ripple {
@@ -152,6 +156,26 @@ input, textarea, select {
 }
 
 #app { min-height: 100vh; }
+
+/* 滚动浮现：默认透明下移，进入视口后由 JS 补 .reveal-in 淡入（错峰靠 --d） */
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s var(--ease), transform 0.6s var(--ease);
+  will-change: opacity, transform;
+}
+.reveal-in {
+  opacity: 1;
+  transform: none;
+  transition-delay: var(--d, 0ms);
+}
+
+/* 毛玻璃面（局部：悬浮面板/登录卡），半透明白保证可读性 */
+.glass {
+  background: rgba(255, 255, 255, 0.6);
+  -webkit-backdrop-filter: saturate(150%) blur(20px);
+  backdrop-filter: saturate(150%) blur(20px);
+}
 
 /* 全局公共基础类（与 Lollipop 同款"悬浮卡/胶囊按钮"语言） */
 .card {

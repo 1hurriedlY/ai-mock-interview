@@ -1,7 +1,7 @@
 <template>
-  <div class="landing">
-    <!-- 顶部导航（浮感） -->
-    <header class="nav">
+  <div ref="root" class="landing">
+    <!-- 顶部导航（浮感毛玻璃） -->
+    <header class="nav glass">
       <div class="brand">模拟面试 AI 助手</div>
       <nav class="nav-links">
         <a href="#steps">怎么练</a>
@@ -16,22 +16,28 @@
 
     <!-- 首屏 -->
     <section class="hero">
-      <h1>每一次模拟面试，<br />都让你更接近 Offer</h1>
-      <p class="lead">
+      <h1 data-reveal>每一次模拟面试，<br />都让你更接近 Offer</h1>
+      <p class="lead" data-reveal style="--d: 90ms">
         从目标岗位梳理、简历解析，到真人感的 AI 模拟面试和结构化复盘，一站完成面试准备。
       </p>
-      <div class="hero-cta">
+      <div class="hero-cta" data-reveal style="--d: 180ms">
         <button class="btn btn-primary btn-lg" @click="goLogin">开始使用</button>
         <a class="btn btn-secondary btn-lg" href="#steps">先看看怎么练</a>
       </div>
-      <p class="hero-note">完全免费 · 无需安装 · 浏览器即开即用</p>
+      <p class="hero-note" data-reveal style="--d: 260ms">完全免费 · 无需安装 · 浏览器即开即用</p>
     </section>
 
     <!-- 四步练习流程 -->
     <section id="steps" class="band">
-      <h2 class="band-title">不是泛泛练习，而是完整的面试准备</h2>
+      <h2 class="band-title" data-reveal>不是泛泛练习，而是完整的面试准备</h2>
       <div class="steps">
-        <div v-for="s in steps" :key="s.no" class="step-card">
+        <div
+          v-for="(s, i) in steps"
+          :key="s.no"
+          class="step-card"
+          data-reveal
+          :style="{ '--d': i * 90 + 'ms' }"
+        >
           <span class="no">{{ s.no }}</span>
           <h3>{{ s.title }}</h3>
           <p>{{ s.desc }}</p>
@@ -41,9 +47,15 @@
 
     <!-- 更多能力 -->
     <section id="bonus" class="band alt">
-      <h2 class="band-title">围绕真实面试场景的加分能力</h2>
+      <h2 class="band-title" data-reveal>围绕真实面试场景的加分能力</h2>
       <div class="bonus-grid">
-        <div v-for="b in bonus" :key="b.title" class="bonus-card">
+        <div
+          v-for="(b, i) in bonus"
+          :key="b.title"
+          class="bonus-card"
+          data-reveal
+          :style="{ '--d': (i % 3) * 90 + 'ms' }"
+        >
           <h3>{{ b.title }}</h3>
           <p>{{ b.desc }}</p>
         </div>
@@ -52,15 +64,23 @@
 
     <!-- 收口 CTA -->
     <section class="cta-band">
-      <h2>现在，开始你的第一次模拟面试</h2>
-      <p>准备好一个目标岗位，3 分钟进入面试状态。</p>
-      <button class="btn btn-primary btn-lg" @click="goLogin">开始使用</button>
+      <h2 data-reveal>现在，开始你的第一次模拟面试</h2>
+      <p data-reveal style="--d: 90ms">准备好一个目标岗位，3 分钟进入面试状态。</p>
+      <div data-reveal style="--d: 180ms">
+        <button class="btn btn-primary btn-lg" @click="goLogin">开始使用</button>
+      </div>
     </section>
 
     <!-- FAQ -->
     <section id="faq" class="band">
-      <h2 class="band-title">开始之前，你可能还想知道</h2>
-      <details v-for="q in faqs" :key="q.q" class="faq">
+      <h2 class="band-title" data-reveal>开始之前，你可能还想知道</h2>
+      <details
+        v-for="(q, i) in faqs"
+        :key="q.q"
+        class="faq"
+        data-reveal
+        :style="{ '--d': i * 60 + 'ms' }"
+      >
         <summary>{{ q.q }}</summary>
         <p>{{ q.a }}</p>
       </details>
@@ -74,9 +94,12 @@
 </template>
 
 <script setup>
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { bindReveal } from '../utils/reveal'
 
 const router = useRouter()
+const root = ref(null)
 
 const steps = [
   { no: '01', title: '选岗位与面试官', desc: '输入目标岗位，选择技术面、项目面或 HR 面，AI 围绕该岗位出题。' },
@@ -104,6 +127,10 @@ const faqs = [
 function goLogin() {
   router.push({ name: 'login', query: { redirect: '/home' } })
 }
+
+onMounted(() => {
+  bindReveal(root.value)
+})
 </script>
 
 <style scoped>

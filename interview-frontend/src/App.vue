@@ -64,21 +64,24 @@ function logout() {
 <style scoped>
 .app-shell { min-height: 100vh; display: flex; }
 
-/* 桌面：左侧悬浮栏 + 右侧内容 */
+/* 桌面：左侧悬浮胶囊栏 + 右侧内容 */
 .side-nav {
   position: sticky;
-  top: 0;
-  height: 100vh;
-  width: 244px;
+  top: 12px;
+  height: calc(100vh - 24px);
+  width: 240px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 22px 14px 18px;
-  background: rgba(255, 255, 255, 0.62);
-  -webkit-backdrop-filter: saturate(140%) blur(16px);
-  backdrop-filter: saturate(140%) blur(16px);
-  border-right: 1px solid var(--border-soft);
+  margin: 12px 10px 12px 14px;
+  padding: 24px 12px 18px;
+  background: rgba(255, 255, 255, 0.66);
+  -webkit-backdrop-filter: saturate(150%) blur(18px);
+  backdrop-filter: saturate(150%) blur(18px);
+  border: 1px solid var(--border-soft);
+  border-radius: 28px;
+  box-shadow: var(--shadow-md);
 }
 
 .brand {
@@ -175,19 +178,19 @@ function logout() {
   padding: 0 8px;
 }
 
-/* 窄屏：收成顶部横排 */
+/* 窄屏：收成顶部横向胶囊 */
 @media (max-width: 900px) {
   .app-shell { flex-direction: column; }
   .side-nav {
     position: static;
     height: auto;
-    width: 100%;
+    width: auto;
     flex-direction: row;
     align-items: center;
     gap: 10px;
-    padding: 10px 16px;
-    border-right: none;
-    border-bottom: 1px solid var(--border-soft);
+    margin: 10px 12px;
+    padding: 10px 14px;
+    border-radius: 24px;
     overflow-x: auto;
   }
   .brand { padding: 0 8px 0 0; white-space: nowrap; }

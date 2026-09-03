@@ -235,11 +235,11 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.interview-view { max-width: 960px; margin: 0 auto; padding: 24px 24px 48px; }
-.topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px; }
+.interview-view { max-width: 1180px; margin: 0 auto; padding: 24px 32px 48px; }
+.topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
 .topbar h1 {
-  font-size: 22px;
-  font-weight: 740;
+  font-size: 26px;
+  font-weight: 760;
   letter-spacing: -0.012em;
   color: var(--ink);
 }
@@ -247,16 +247,16 @@ onBeforeUnmount(() => {
 .stage-badge {
   background: var(--ink-soft);
   color: var(--ink);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  padding: 4px 12px;
+  padding: 5px 14px;
   border-radius: var(--radius-chip);
 }
 .ghost {
   background: var(--card);
   border: 1px solid var(--border);
   color: var(--text-secondary);
-  padding: 6px 16px;
+  padding: 7px 18px;
   border-radius: var(--radius-chip);
   cursor: pointer;
   font-size: 13px;
@@ -270,14 +270,14 @@ onBeforeUnmount(() => {
   box-shadow: var(--shadow-sm);
 }
 .chat-box {
-  padding: 18px 22px;
-  height: 50vh;
-  min-height: 340px;
+  padding: 22px 26px;
+  height: calc(100vh - 240px);
+  min-height: 460px;
   overflow-y: auto;
 }
-.chat-layout { display: flex; gap: 16px; align-items: flex-start; }
+.chat-layout { display: flex; gap: 18px; align-items: flex-start; }
 .chat-main { flex: 1; min-width: 0; }
-.cam-sidebar { width: 240px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; }
+.cam-sidebar { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
 .expr-now {
   background: var(--card);
   border: 1px solid var(--border-soft);
@@ -295,16 +295,16 @@ onBeforeUnmount(() => {
   .chat-layout { flex-direction: column; }
   .cam-sidebar { width: 100%; order: -1; }
 }
-.msg { display: flex; margin-bottom: 14px; }
+.msg { display: flex; margin-bottom: 16px; }
 .msg.left { justify-content: flex-start; }
 .msg.right { justify-content: flex-end; }
 .bubble {
-  max-width: 78%;
-  padding: 11px 16px;
-  border-radius: 18px;
-  line-height: 1.7;
+  max-width: 82%;
+  padding: 13px 20px;
+  border-radius: 20px;
+  line-height: 1.75;
   white-space: pre-wrap;
-  font-size: 14.5px;
+  font-size: 15.5px;
 }
 .msg.left .bubble {
   background: var(--ink-soft);
@@ -320,15 +320,15 @@ onBeforeUnmount(() => {
 .cursor { animation: blink 0.8s step-end infinite; }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 .error { color: var(--danger); margin: 8px 0; }
-.input-bar { display: flex; gap: 10px; margin-top: 14px; }
+.input-bar { display: flex; gap: 10px; margin-top: 16px; }
 .input-bar input {
   flex: 1;
-  height: 46px;
-  padding: 0 16px;
+  height: 52px;
+  padding: 0 20px;
   border: 1px solid var(--border);
   border-radius: var(--radius-chip);
   background: var(--bg-soft);
-  font-size: 14px;
+  font-size: 15px;
   transition: var(--transition);
 }
 .input-bar input:focus {
@@ -342,11 +342,11 @@ onBeforeUnmount(() => {
   background: var(--ink);
   color: #fff;
   border: none;
-  padding: 0 26px;
-  min-width: 100px;
+  padding: 0 30px;
+  min-width: 110px;
   border-radius: var(--radius-chip);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   transition: var(--transition);
 }
