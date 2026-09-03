@@ -172,9 +172,10 @@ input, textarea, select {
 
 /* 毛玻璃面（局部：悬浮面板/登录卡），半透明白保证可读性 */
 .glass {
-  background: rgba(255, 255, 255, 0.6);
-  -webkit-backdrop-filter: saturate(150%) blur(20px);
-  backdrop-filter: saturate(150%) blur(20px);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
 }
 
 /* 全局公共基础类（与 Lollipop 同款"悬浮卡/胶囊按钮"语言） */

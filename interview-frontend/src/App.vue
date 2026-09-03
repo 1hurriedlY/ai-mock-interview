@@ -76,10 +76,10 @@ function logout() {
   gap: 6px;
   margin: 12px 10px 12px 14px;
   padding: 24px 12px 18px;
-  background: rgba(255, 255, 255, 0.66);
-  -webkit-backdrop-filter: saturate(150%) blur(18px);
-  backdrop-filter: saturate(150%) blur(18px);
-  border: 1px solid var(--border-soft);
+  background: rgba(255, 255, 255, 0.55);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: 28px;
   box-shadow: var(--shadow-md);
 }

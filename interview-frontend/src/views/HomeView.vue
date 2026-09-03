@@ -8,51 +8,50 @@
     <p v-if="error" class="error">{{ error }}</p>
 
     <section class="card deck">
-      <!-- 简历 -->
-      <div class="zone">
-        <div class="zone-head">
-          <h2>简历（可选）</h2>
-          <span v-if="resume.summary" class="chip chip-ok">已分析</span>
-        </div>
-        <p v-if="!resume.summary" class="zone-sub">不上传也能面试；上传后 AI 会围绕你的真实项目深入追问。</p>
+      <!-- 双栏：简历 | 岗位与面试官 -->
+      <div class="cols">
+        <div class="zone">
+          <div class="zone-head">
+            <h2>简历（可选）</h2>
+            <span v-if="resume.summary" class="chip chip-ok">已分析</span>
+          </div>
+          <p v-if="!resume.summary" class="zone-sub">不上传也能面试；上传后 AI 会围绕你的真实项目深入追问。</p>
 
-        <div v-if="resume.summary" class="resume-done">
-          <p class="resume-summary">{{ resume.summary }}</p>
-          <button class="text-btn" @click="resume = {}">换一份简历</button>
+          <div v-if="resume.summary" class="resume-done">
+            <p class="resume-summary">{{ resume.summary }}</p>
+            <button class="text-btn" @click="resume = {}">换一份简历</button>
+          </div>
+          <div v-else class="upload-row">
+            <input id="resume-file" type="file" accept=".pdf,.docx,.txt,.md" @change="onFileChange" />
+            <button class="btn btn-secondary" :disabled="!file || uploading" @click="uploadResume">
+              {{ uploading ? '解析中…' : '上传并解析' }}
+            </button>
+          </div>
         </div>
-        <div v-else class="upload-row">
-          <input id="resume-file" type="file" accept=".pdf,.docx,.txt,.md" @change="onFileChange" />
-          <button class="btn btn-secondary" :disabled="!file || uploading" @click="uploadResume">
-            {{ uploading ? '解析中…' : '上传并解析' }}
-          </button>
-        </div>
-      </div>
 
-      <div class="divider"></div>
-
-      <!-- 面试准备 -->
-      <div class="zone">
-        <div class="zone-head">
-          <h2>岗位与面试官</h2>
-        </div>
-        <div class="field">
-          <input
-            v-model.trim="jobTitle"
-            placeholder="目标岗位，例如 Python 后端工程师"
-            @keyup.enter="startInterview"
-          />
-        </div>
-        <div class="roles">
-          <button
-            v-for="r in roles"
-            :key="r.key"
-            class="role"
-            :class="{ active: role === r.key }"
-            @click="role = r.key"
-          >
-            <strong>{{ r.name }}</strong>
-            <span>{{ r.description }}</span>
-          </button>
+        <div class="zone">
+          <div class="zone-head">
+            <h2>岗位与面试官</h2>
+          </div>
+          <div class="field">
+            <input
+              v-model.trim="jobTitle"
+              placeholder="目标岗位，例如 Python 后端工程师"
+              @keyup.enter="startInterview"
+            />
+          </div>
+          <div class="roles">
+            <button
+              v-for="r in roles"
+              :key="r.key"
+              class="role"
+              :class="{ active: role === r.key }"
+              @click="role = r.key"
+            >
+              <strong>{{ r.name }}</strong>
+              <span>{{ r.description }}</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -129,7 +128,7 @@ async function startInterview() {
 </script>
 
 <style scoped>
-.home-view { max-width: 960px; margin: 0 auto; padding: 24px 32px 64px; }
+.home-view { max-width: 1120px; margin: 0 auto; padding: 24px 32px 64px; }
 
 .hero { text-align: left; margin-bottom: 22px; }
 .hero h1 {
@@ -143,13 +142,24 @@ async function startInterview() {
   margin-top: 10px;
   color: var(--text-secondary);
   font-size: 15px;
-  max-width: 60ch;
+  max-width: 68ch;
   line-height: 1.7;
 }
 
-/* "准备台"浮卡：更宽敞 */
+/* "准备台"浮卡：半透明毛玻璃，背景渐变与涟漪透出 */
 .deck {
-  padding: 26px 30px;
+  padding: 28px 32px;
+  background: rgba(255, 255, 255, 0.56);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+}
+
+/* 双栏：简历 | 岗位与面试官 */
+.cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+  gap: 40px;
+  align-items: start;
 }
 .zone { padding: 4px 0; }
 .zone-head {
@@ -267,6 +277,9 @@ async function startInterview() {
 }
 .action-hint { color: var(--text-muted); font-size: 13px; }
 
+@media (max-width: 900px) {
+  .cols { grid-template-columns: 1fr; gap: 18px; }
+}
 @media (max-width: 640px) {
   .hero h1 { font-size: 24px; }
   .roles { grid-template-columns: 1fr; }

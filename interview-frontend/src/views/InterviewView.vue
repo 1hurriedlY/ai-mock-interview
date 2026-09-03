@@ -264,8 +264,10 @@ onBeforeUnmount(() => {
 }
 .ghost:hover { color: var(--ink); border-color: var(--ink); }
 .card {
-  background: var(--card);
-  border: 1px solid var(--border-soft);
+  background: rgba(255, 255, 255, 0.56);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-sm);
 }
@@ -279,8 +281,10 @@ onBeforeUnmount(() => {
 .chat-main { flex: 1; min-width: 0; }
 .cam-sidebar { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
 .expr-now {
-  background: var(--card);
-  border: 1px solid var(--border-soft);
+  background: rgba(255, 255, 255, 0.56);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: var(--radius-card);
   padding: 12px 16px;
   display: flex;
