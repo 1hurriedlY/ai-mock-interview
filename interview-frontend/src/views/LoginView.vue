@@ -1,10 +1,13 @@
 <template>
   <div class="login-view">
-    <form class="card" @submit.prevent="submit">
-      <h1>模拟面试 AI 助手</h1>
+    <form class="login-card" @submit.prevent="submit">
+      <div class="brand-mark">
+        <span class="brand-emoji">●‿●</span>
+      </div>
+      <h1>欢迎回来</h1>
       <p class="subtitle">登录后开始你的模拟面试练习</p>
 
-      <label>用户名</label>
+      <label>邮箱</label>
       <input v-model.trim="username" placeholder="至少 2 个字符" autocomplete="username" />
 
       <label>密码</label>
@@ -12,7 +15,7 @@
 
       <p v-if="error" class="error">{{ error }}</p>
 
-      <button type="submit" :disabled="loading || !canSubmit" class="primary">
+      <button type="submit" :disabled="loading || !canSubmit" class="btn btn-primary btn-lg">
         {{ loading ? '提交中…' : isLogin ? '登录' : '注册并登录' }}
       </button>
 
@@ -59,52 +62,82 @@ async function submit() {
 
 <style scoped>
 .login-view {
+  width: 100%;
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  background: linear-gradient(135deg, #eef2ff 0%, #f5f6f8 100%);
+  padding: 24px 20px;
 }
-.card {
+.login-card {
   width: 100%;
-  max-width: 380px;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 32px 28px;
-  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.06);
+  max-width: 400px;
+  background: var(--card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-lg);
+  padding: 28px 28px 22px;
+  text-align: center;
 }
-h1 { font-size: 22px; text-align: center; color: var(--primary); }
-.subtitle { text-align: center; color: var(--text-secondary); margin: 6px 0 24px; font-size: 13px; }
-label { display: block; font-size: 13px; color: var(--text-secondary); margin: 14px 0 6px; }
+.brand-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--ink);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  letter-spacing: 0.02em;
+  margin: 0 auto 14px;
+  box-shadow: 0 10px 20px rgba(15, 17, 21, 0.16);
+}
+h1 {
+  font-size: 22px;
+  font-weight: 720;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.subtitle {
+  color: var(--text-secondary);
+  margin: 4px 0 20px;
+  font-size: 13px;
+}
+label {
+  display: block;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 12px 0 6px;
+}
 input {
   width: 100%;
-  padding: 10px 12px;
+  height: 40px;
+  padding: 0 14px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-input);
+  background: var(--bg-soft);
   font-size: 14px;
+  transition: var(--transition);
+  text-align: left;
 }
-input:focus { outline: none; border-color: var(--primary); }
-.error { color: #dc2626; font-size: 13px; margin-top: 10px; }
-button.primary {
-  width: 100%;
-  margin-top: 20px;
-  padding: 11px;
-  background: var(--primary);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  font-size: 15px;
-  cursor: pointer;
+input:focus {
+  outline: none;
+  border-color: var(--ink);
+  background: var(--card);
+  box-shadow: var(--ring);
 }
-button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+input::placeholder { color: var(--text-muted); }
+.error { color: var(--danger); font-size: 13px; margin-top: 10px; }
+button.primary { width: 100%; margin-top: 18px; }
 .switch {
-  text-align: center;
-  color: var(--primary);
+  color: var(--text-secondary);
   font-size: 13px;
-  margin-top: 16px;
+  margin-top: 14px;
   cursor: pointer;
   user-select: none;
 }
+.switch:hover { color: var(--ink); }
 </style>

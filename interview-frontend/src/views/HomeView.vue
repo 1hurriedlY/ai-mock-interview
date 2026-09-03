@@ -1,55 +1,71 @@
 <template>
   <div class="home-view">
-    <div class="hero">
-      <h1>模拟面试 AI 助手</h1>
-      <p>上传简历 → 选择岗位与面试官 → 开始一场真人感的模拟面试，结束后获得多维评分报告。</p>
-    </div>
+    <header class="hero">
+      <h1>今天，练一场面试</h1>
+      <p>备好简历、选好岗位与面试官，30 分钟内得到真实的问答练习与一份多维评分报告。</p>
+    </header>
 
-    <!-- ① 简历（可选） -->
-    <section class="card">
-      <div class="section-head">
-        <h2>① 简历（可选，可跳过后仍能面试）</h2>
-        <span v-if="resume.summary" class="tag ok">已分析</span>
-      </div>
-      <div v-if="resume.summary" class="resume-done">
-        <p class="resume-summary">{{ resume.summary }}</p>
-        <button class="link" @click="resume = {}">重新上传</button>
-      </div>
-      <div v-else>
-        <div class="upload-row">
-          <input type="file" accept=".pdf,.docx,.txt,.md" @change="onFileChange" />
-          <button :disabled="!file || uploading" @click="uploadResume">
+    <p v-if="error" class="error">{{ error }}</p>
+
+    <section class="card deck">
+      <!-- 简历 -->
+      <div class="zone">
+        <div class="zone-head">
+          <h2>简历（可选）</h2>
+          <span v-if="resume.summary" class="chip chip-ok">已分析</span>
+        </div>
+        <p v-if="!resume.summary" class="zone-sub">不上传也能面试；上传后 AI 会围绕你的真实项目深入追问。</p>
+
+        <div v-if="resume.summary" class="resume-done">
+          <p class="resume-summary">{{ resume.summary }}</p>
+          <button class="text-btn" @click="resume = {}">换一份简历</button>
+        </div>
+        <div v-else class="upload-row">
+          <input id="resume-file" type="file" accept=".pdf,.docx,.txt,.md" @change="onFileChange" />
+          <button class="btn btn-secondary" :disabled="!file || uploading" @click="uploadResume">
             {{ uploading ? '解析中…' : '上传并解析' }}
           </button>
         </div>
-        <p class="hint">支持 PDF / DOCX / TXT，AI 会从简历提取技能栈与项目经历，用于深度追问。</p>
       </div>
-    </section>
 
-    <!-- ② 岗位与角色 -->
-    <section class="card">
-      <h2>② 面试准备</h2>
-      <div class="form-row">
-        <input v-model.trim="jobTitle" placeholder="目标岗位，如：Python 后端工程师" @keyup.enter="startInterview" />
+      <div class="divider"></div>
+
+      <!-- 面试准备 -->
+      <div class="zone">
+        <div class="zone-head">
+          <h2>岗位与面试官</h2>
+        </div>
+        <div class="field">
+          <input
+            v-model.trim="jobTitle"
+            placeholder="目标岗位，例如 Python 后端工程师"
+            @keyup.enter="startInterview"
+          />
+        </div>
+        <div class="roles">
+          <button
+            v-for="r in roles"
+            :key="r.key"
+            class="role"
+            :class="{ active: role === r.key }"
+            @click="role = r.key"
+          >
+            <strong>{{ r.name }}</strong>
+            <span>{{ r.description }}</span>
+          </button>
+        </div>
       </div>
-      <div class="roles">
-        <button
-          v-for="r in roles"
-          :key="r.key"
-          class="role-card"
-          :class="{ active: role === r.key }"
-          @click="role = r.key"
-        >
-          <strong>{{ r.name }}</strong>
-          <span>{{ r.description }}</span>
+
+      <div class="divider"></div>
+
+      <!-- 主操作 -->
+      <div class="action-row">
+        <p class="action-hint">准备好后开始，途中可随时语音回答、开启表情分析。</p>
+        <button class="btn btn-primary btn-lg" :disabled="!jobTitle || starting" @click="startInterview">
+          {{ starting ? '准备中…' : '开始面试' }}
         </button>
       </div>
-      <button class="primary" :disabled="!jobTitle || starting" @click="startInterview">
-        {{ starting ? '准备中…' : '开始面试' }}
-      </button>
     </section>
-
-    <p v-if="error" class="error">{{ error }}</p>
   </div>
 </template>
 
@@ -64,7 +80,7 @@ const role = ref('technical')
 
 const file = ref(null)
 const uploading = ref(false)
-const resume = ref({}) // { resume_id, summary, skills }
+const resume = ref({})
 
 const jobTitle = ref('')
 const starting = ref(false)
@@ -113,43 +129,147 @@ async function startInterview() {
 </script>
 
 <style scoped>
-.home-view { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
-.hero h1 { color: var(--primary); margin-bottom: 8px; }
-.hero p { color: var(--text-secondary); margin-bottom: 20px; }
-.card {
-  background: var(--card);
+.home-view { max-width: 760px; margin: 0 auto; padding: 24px 24px 64px; }
+
+.hero { text-align: left; margin-bottom: 18px; }
+.hero h1 {
+  font-size: 26px;
+  font-weight: 760;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  line-height: 1.2;
+}
+.hero p {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  max-width: 56ch;
+  line-height: 1.65;
+}
+
+/* "准备台"浮卡：Lollipop 同款白色浮在渐变底上 */
+.deck {
+  padding: 20px 22px;
+}
+.zone { padding: 4px 0; }
+.zone-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.zone-head h2 {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+}
+.zone-sub {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.divider {
+  height: 1px;
+  background: var(--border-soft);
+  margin: 16px 0;
+}
+
+/* chip / status */
+.chip {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: var(--radius-chip);
+}
+.chip-ok { background: var(--success-bg); color: var(--success-text); }
+
+/* 简历区 */
+.resume-done p {
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.65;
+  margin: 8px 0 2px;
+}
+.text-btn {
+  background: none;
+  border: none;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 12.5px;
+  padding: 0;
+  font-weight: 600;
+}
+.text-btn:hover { text-decoration: underline; }
+.upload-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.upload-row input { font-size: 13px; color: var(--text-secondary); }
+
+/* 表单 */
+.field { margin-top: 8px; }
+.field input {
+  width: 100%;
+  height: 40px;
+  padding: 0 14px;
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 16px;
+  border-radius: var(--radius-input);
+  background: var(--bg-soft);
+  font-size: 14px;
+  transition: var(--transition);
 }
-.section-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
-.card h2 { font-size: 16px; margin-bottom: 14px; }
-.tag.ok { background: #dcfce7; color: #166534; font-size: 12px; padding: 2px 8px; border-radius: 10px; }
-.resume-done p { color: var(--text); margin-bottom: 8px; font-size: 14px; }
-.resume-summary { line-height: 1.7; }
-.upload-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.upload-row input { font-size: 13px; }
-.upload-row button, .primary {
-  background: var(--primary); color: #fff; border: none; border-radius: 8px;
-  padding: 10px 18px; cursor: pointer; font-size: 14px;
+.field input:focus {
+  outline: none;
+  border-color: var(--ink);
+  background: var(--card);
+  box-shadow: var(--ring);
 }
-.upload-row button:disabled, .primary:disabled { opacity: 0.5; cursor: not-allowed; }
-.hint { color: var(--text-secondary); font-size: 12px; margin-top: 8px; }
-.form-row { margin-bottom: 12px; }
-.form-row input {
-  width: 100%; padding: 10px 12px; border: 1px solid var(--border);
-  border-radius: 8px; font-size: 14px;
+.field input::placeholder { color: var(--text-muted); }
+
+/* 角色选择：Lollipop 同款"选中态用浅色底" */
+.roles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 10px;
 }
-.roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 14px; }
-.role-card {
-  border: 1px solid var(--border); background: #f9fafb; border-radius: 10px;
-  padding: 12px; text-align: left; cursor: pointer; font-family: inherit;
+.role {
+  text-align: left;
+  padding: 12px 14px;
+  background: var(--card);
+  cursor: pointer;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-card);
+  transition: var(--transition);
 }
-.role-card strong { display: block; margin-bottom: 4px; }
-.role-card span { font-size: 12px; color: var(--text-secondary); display: block; }
-.role-card.active { border-color: var(--primary); background: #eff6ff; }
-.role-card.active strong { color: var(--primary); }
-.error { color: #dc2626; }
-.link { background: none; border: none; color: var(--primary); cursor: pointer; text-decoration: underline; }
+.role:hover { border-color: var(--ink); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.role:active { transform: translateY(0) scale(0.985); }
+.role strong { display: block; font-size: 14px; color: var(--ink); }
+.role span { display: block; margin-top: 3px; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+.role.active {
+  background: var(--ink-soft);
+  border-color: var(--ink);
+}
+.role.active strong { color: var(--ink); }
+
+/* 操作行 */
+.action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.action-hint { color: var(--text-muted); font-size: 12.5px; }
+
+@media (max-width: 640px) {
+  .hero h1 { font-size: 22px; }
+  .roles { grid-template-columns: 1fr; }
+  .deck { padding: 18px 18px; }
+}
 </style>

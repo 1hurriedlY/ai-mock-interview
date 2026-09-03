@@ -143,31 +143,73 @@ onMounted(load)
 </script>
 
 <style scoped>
-.admin-view { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
-.hero h1 { color: var(--primary); margin-bottom: 6px; }
-.hero p { color: var(--text-secondary); margin-bottom: 18px; }
-.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-.card h2 { font-size: 16px; margin: 0 0 12px; }
+.admin-view { max-width: 1100px; margin: 0 auto; padding: 24px 24px 56px; }
+.hero h1 {
+  font-size: 22px;
+  font-weight: 740;
+  letter-spacing: -0.012em;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.hero p { color: var(--text-secondary); font-size: 14px; margin: 4px 0 16px; }
+.card {
+  background: var(--card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-sm);
+  padding: 20px 22px;
+  margin-bottom: 16px;
+}
+.card h2 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 12px;
+}
 .sec-head { display: flex; justify-content: space-between; align-items: center; }
 .muted { color: var(--text-secondary); font-size: 13px; }
-.error { color: #dc2626; margin-bottom: 10px; }
+.error { color: var(--danger); margin-bottom: 10px; }
 .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
-.tbl th, .tbl td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #f0f0f0; white-space: nowrap; }
-.tbl th { color: var(--text-secondary); font-weight: 500; }
-.tbl tbody tr:hover { background: #f8fafc; }
-.tag { font-size: 11px; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
-.tag-admin { background: #fee2e2; color: #b91c1c; }
-.tag-user { background: #e0e7ff; color: #3730a3; }
-.tag-done { background: #dcfce7; color: #166534; }
-.tag-run { background: #fef9c3; color: #a16207; }
+.tbl th, .tbl td { text-align: left; padding: 10px 10px; border-bottom: 1px solid var(--border-soft); white-space: nowrap; }
+.tbl th { color: var(--text-secondary); font-weight: 600; font-size: 12px; }
+.tbl tbody tr { transition: var(--transition); }
+.tbl tbody tr:hover { background: var(--bg-soft); }
+.tbl tbody tr:last-child td { border-bottom: none; }
+.tag {
+  font-size: 11px;
+  padding: 2px 10px;
+  border-radius: var(--radius-chip);
+  white-space: nowrap;
+  font-weight: 600;
+}
+.tag-admin { background: var(--danger-bg); color: var(--danger-text); }
+.tag-user { background: var(--ink-soft); color: var(--ink); }
+.tag-done { background: var(--success-bg); color: var(--success-text); }
+.tag-run { background: var(--warning-bg); color: var(--warning-text); }
 .btn-del {
-  border: 1px solid #fecaca; background: #fff; color: #dc2626;
-  font-size: 12px; padding: 2px 10px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--danger);
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: var(--radius-chip);
+  cursor: pointer;
+  transition: var(--transition);
 }
 .btn-del:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-del:hover:not(:disabled) { background: #fef2f2; }
-.ghost {
-  border: 1px solid var(--border); background: #fff; color: var(--text-secondary);
-  font-size: 12px; padding: 4px 12px; border-radius: 8px; cursor: pointer;
+.btn-del:hover:not(:disabled) {
+  background: var(--danger-bg);
+  border-color: var(--danger);
 }
+.ghost {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  padding: 6px 16px;
+  border-radius: var(--radius-chip);
+  cursor: pointer;
+  transition: var(--transition);
+}
+.ghost:hover { color: var(--ink); border-color: var(--ink); }
 </style>

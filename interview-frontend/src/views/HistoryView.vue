@@ -130,56 +130,142 @@ async function removeSession(s) {
 </script>
 
 <style scoped>
-.history-view { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
-.hero h1 { color: var(--primary); margin-bottom: 6px; }
-.hero p { color: var(--text-secondary); margin-bottom: 18px; }
+.history-view { max-width: 1100px; margin: 0 auto; padding: 24px 24px 56px; }
+.hero h1 {
+  font-size: 22px;
+  font-weight: 740;
+  letter-spacing: -0.012em;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.hero p { color: var(--text-secondary); font-size: 14px; margin: 4px 0 16px; }
 .layout { display: grid; grid-template-columns: 340px 1fr; gap: 16px; align-items: start; }
-.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.card {
+  background: var(--card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-sm);
+  padding: 18px 20px;
+}
 .muted { color: var(--text-secondary); font-size: 13px; }
-.error { color: #dc2626; }
-.session-list { list-style: none; margin: 0; padding: 0; max-height: 70vh; overflow-y: auto; }
-.session-item { padding: 12px; border-radius: 10px; cursor: pointer; margin-bottom: 6px; }
-.session-item:hover { background: #f8fafc; }
-.session-item.active { background: #eff6ff; }
+.error { color: var(--danger); }
+.session-list { list-style: none; margin: 0; padding: 0; max-height: 72vh; overflow-y: auto; }
+.session-item {
+  padding: 13px 14px;
+  border-radius: 14px;
+  cursor: pointer;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
+  transition: var(--transition);
+}
+.session-item:hover { background: var(--bg-soft); }
+.session-item.active {
+  background: var(--ink-soft);
+  border-color: var(--ink);
+}
+.session-item.active .session-head strong { color: var(--ink); }
 .btn-del {
-  margin-left: auto; border: 1px solid #fecaca; background: #fff; color: #dc2626;
-  font-size: 11px; padding: 2px 8px; border-radius: 8px; cursor: pointer;
-  opacity: 0; transition: opacity 0.15s;
+  margin-left: auto;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--danger);
+  font-size: 11.5px;
+  padding: 3px 10px;
+  border-radius: var(--radius-chip);
+  cursor: pointer;
+  opacity: 0;
+  transition: var(--transition);
 }
 .session-item:hover .btn-del { opacity: 1; }
-.btn-del:hover { background: #fef2f2; }
+.btn-del:hover { background: var(--danger-bg); }
 .session-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.session-head strong { font-size: 14px; }
-.tag { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #eef2ff; color: #3730a3; }
-.tag.warn { background: #fef9c3; color: #a16207; }
-.score { font-size: 12px; font-weight: 600; }
-.score-good { color: #059669; }
-.score-mid { color: #d97706; }
-.score-low { color: #dc2626; }
-.session-meta { display: flex; gap: 10px; color: var(--text-secondary); font-size: 11px; margin-top: 6px; flex-wrap: wrap; }
-.detail-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.detail-head h2 { font-size: 18px; }
-.btn-report {
-  background: var(--primary); color: #fff; text-decoration: none;
-  padding: 6px 14px; border-radius: 8px; font-size: 13px;
+.session-head strong { font-size: 14px; color: var(--ink); }
+.tag {
+  font-size: 11px;
+  padding: 2px 10px;
+  border-radius: var(--radius-chip);
+  background: var(--ink-soft);
+  color: var(--ink);
+  font-weight: 600;
 }
-.meta-line { color: var(--text-secondary); font-size: 12px; margin: 8px 0 14px; }
-.msgs { max-height: 65vh; overflow-y: auto; }
-.msg { display: flex; margin-bottom: 10px; }
+.tag.warn { background: var(--warning-bg); color: var(--warning-text); }
+.score { font-size: 12.5px; font-weight: 650; }
+.score-good { color: var(--success); }
+.score-mid { color: var(--warning); }
+.score-low { color: var(--danger); }
+.session-meta {
+  display: flex;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.detail-head h2 {
+  font-size: 20px;
+  font-weight: 760;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.btn-report {
+  background: var(--ink);
+  color: #fff;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 18px;
+  height: 38px;
+  border-radius: var(--radius-chip);
+  font-size: 13.5px;
+  font-weight: 600;
+  transition: var(--transition);
+}
+.btn-report:hover {
+  background: var(--ink-hover);
+  box-shadow: 0 8px 20px rgba(15, 17, 21, 0.18);
+}
+.meta-line { color: var(--text-secondary); font-size: 12.5px; margin: 10px 0 16px; }
+.msgs { max-height: 66vh; overflow-y: auto; }
+.msg { display: flex; margin-bottom: 12px; }
 .msg.right { justify-content: flex-end; }
 .bubble {
-  max-width: 90%; background: #f1f3f5; padding: 10px 14px; border-radius: 12px;
-  white-space: pre-wrap; line-height: 1.7; font-size: 14px;
+  max-width: 92%;
+  background: var(--ink-soft);
+  padding: 11px 16px;
+  border-radius: 18px;
+  white-space: pre-wrap;
+  line-height: 1.75;
+  font-size: 14px;
+  color: var(--text);
 }
-.msg.right .bubble { background: var(--primary); color: #fff; }
-.ref { margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(37, 99, 235, 0.3); }
+.msg.right .bubble {
+  background: var(--ink);
+  color: #fff;
+  border-bottom-right-radius: 6px;
+}
+.msg:not(.right) .bubble { border-bottom-left-radius: 6px; }
+.ref { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-soft); }
 .ref-label {
-  font-size: 11px; background: #e0e7ff; color: #3730a3;
-  padding: 1px 6px; border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--ink-soft);
+  color: var(--ink);
+  padding: 1px 8px;
+  border-radius: var(--radius-chip);
 }
 .ref pre {
-  margin: 6px 0 0; white-space: pre-wrap; font-family: inherit;
-  font-size: 13px; color: var(--text-secondary);
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.75;
 }
 @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } }
 </style>

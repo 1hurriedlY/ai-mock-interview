@@ -1,40 +1,204 @@
-/* 全局基础样式（覆盖 Vite 脚手架演示样式，适配业务布局）。 */
+/* 全局设计系统：对齐 Lollipop "soft pastel-modern" 视觉语言。
+ * - 极淡薰衣草/粉蓝渐变底
+ * - 白色浮卡 18px 圆角 + 柔阴影
+ * - 唯一强色彩：近黑（--ink），用于品牌与主操作胶囊
+ * - 副按钮：白底浅描边胶囊
+ * - 形状锁：胶囊卡片 18 / 输入 14 / 按钮胶囊 999
+ * - 动效：纯 CSS 微动效，全部尊重 prefers-reduced-motion
+ */
 :root {
-  --primary: #2563eb;
-  --text: #1f2937;
-  --text-secondary: #6b7280;
-  --border: #e5e7eb;
-  --bg: #f5f6f8;
+  /* 唯一强色彩：近黑，主操作与品牌 */
+  --ink: #0f1115;
+  --ink-hover: #000;
+  --ink-soft: #f2f3f5;
+
+  /* 语义色（克制使用） */
+  --success: #16a34a;
+  --success-bg: #dcfce7;
+  --success-text: #15803d;
+  --warning: #d97706;
+  --warning-bg: #fef3c7;
+  --warning-text: #b45309;
+  --danger: #dc2626;
+  --danger-bg: #fee2e2;
+  --danger-text: #b91c1c;
+
+  /* 文本（冷灰） */
+  --text: #1e293b;
+  --text-strong: #0f1115;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+
+  /* 线/底/卡（极淡，不喧宾夺主） */
+  --border: #e2e8f0;
+  --border-soft: #eef1f6;
   --card: #ffffff;
 
-  font-family: system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', Roboto, sans-serif;
+  /* 形状锁 */
+  --radius-input: 14px;
+  --radius-card: 18px;
+  --radius-panel: 24px;
+  --radius-chip: 999px;
+
+  /* 柔和阴影（彩度极低） */
+  --shadow-sm: 0 1px 2px rgba(15, 17, 21, 0.04), 0 1px 3px rgba(15, 17, 21, 0.04);
+  --shadow-md: 0 4px 18px rgba(15, 17, 21, 0.06);
+  --shadow-lg: 0 18px 40px rgba(15, 17, 21, 0.07);
+  --ring: 0 0 0 4px rgba(15, 17, 21, 0.08);
+
+  /* 过渡 */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --transition: color 0.18s var(--ease), background-color 0.18s var(--ease),
+    border-color 0.18s var(--ease), box-shadow 0.18s var(--ease),
+    transform 0.18s var(--ease), opacity 0.18s var(--ease);
+
+  font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
   font-size: 15px;
-  line-height: 1.6;
+  line-height: 1.65;
   color: var(--text);
-  background: var(--bg);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
-}
-
-h1,
-h2,
-h3,
-h4,
-p {
-  margin: 0;
-}
-
-button {
-  font-family: inherit;
-}
-
-#app {
   min-height: 100vh;
+  /* 极淡薰衣草→粉蓝径向：与 Lollipop 同款"soft pastel mesh"质感 */
+  background:
+    radial-gradient(120% 80% at 0% 0%, #eef0ff 0%, transparent 55%),
+    radial-gradient(100% 90% at 100% 0%, #fdf0f6 0%, transparent 55%),
+    radial-gradient(110% 90% at 50% 100%, #eaf3ff 0%, transparent 60%),
+    #f6f7fb;
+  background-attachment: fixed;
 }
+
+h1, h2, h3, h4, p { margin: 0; }
+
+button { font-family: inherit; }
+
+a { color: var(--ink); text-decoration: none; }
+a:hover { color: var(--ink-hover); }
+
+input, textarea, select {
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+}
+
+/* 键盘可达性：统一焦点环（鼠标点击不出现） */
+:focus-visible { outline: none; box-shadow: var(--ring); }
+
+/* 页面切换淡入（配合 App.vue <Transition name="page">） */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.2s var(--ease), transform 0.18s var(--ease);
+}
+.page-enter-from,
+.page-leave-to { opacity: 0; transform: translateY(6px); }
+
+/* 减弱动态效果：全部过渡/动画降级 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* 背景动态涟漪（App.vue 注入装饰层；z 轴置于内容之下、不拦截点击） */
+.bg-ripple {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+.bg-ripple .ripple {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.bg-ripple .ripple::before,
+.bg-ripple .ripple::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0.15);
+  animation: ripple-wave 9s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
+}
+.r-a { left: 12%; top: 18%; width: 340px; height: 340px; }
+.r-b { left: 66%; top: 8%; width: 420px; height: 420px; }
+.r-c { left: 42%; top: 72%; width: 520px; height: 520px; }
+.r-a::before, .r-a::after { border: 1.5px solid rgba(139, 152, 255, 0.25); }
+.r-b::before, .r-b::after { border: 1.5px solid rgba(249, 168, 212, 0.22); }
+.r-c::before, .r-c::after { border: 1.5px solid rgba(125, 211, 252, 0.22); }
+.r-a::after { animation-delay: -3s; }
+.r-b::after { animation-delay: -4.5s; }
+.r-c::after { animation-delay: -6s; }
+@keyframes ripple-wave {
+  0% {
+    transform: translate(-50%, -50%) scale(0.12);
+    opacity: 0.9;
+  }
+  70% { opacity: 0.25; }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+  }
+}
+
+#app { min-height: 100vh; }
+
+/* 全局公共基础类（与 Lollipop 同款"悬浮卡/胶囊按钮"语言） */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-md);
+  padding: 22px 24px;
+}
+.panel {
+  background: var(--card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-lg);
+  padding: 22px 22px;
+}
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border-radius: var(--radius-chip); border: 1px solid transparent;
+  font-size: 14px; font-weight: 550; cursor: pointer;
+  transition: var(--transition); white-space: nowrap;
+  height: 38px; padding: 0 18px;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+.btn-primary:hover:not(:disabled) { background: var(--ink-hover); border-color: var(--ink-hover); box-shadow: 0 8px 20px rgba(15, 17, 21, 0.18); }
+.btn-primary:active:not(:disabled) { transform: scale(0.98); }
+.btn-secondary { background: var(--card); color: var(--ink); border-color: var(--border); height: 38px; padding: 0 18px; }
+.btn-secondary:hover:not(:disabled) { border-color: var(--ink); }
+.btn-secondary:active:not(:disabled) { transform: scale(0.98); }
+.btn-ghost { background: transparent; color: var(--text-secondary); border-color: transparent; }
+.btn-ghost:hover:not(:disabled) { color: var(--ink); }
+.btn-lg { height: 44px; padding: 0 26px; font-size: 15px; font-weight: 600; }
+.btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+.btn-danger:hover:not(:disabled) { background: var(--danger-text); border-color: var(--danger-text); }
+
+.muted { color: var(--text-secondary); font-size: 13px; }
+.error { color: var(--danger); font-size: 14px; }
+
+/* 兼容旧别名（部分历史组件还在用） */
+--danger-soft: #fee2e2;
+--danger-hover: #b91c1c;
+--success-soft: #dcfce7;
+--warning-soft: #fef3c7;
+--radius-sm: 10px;
+--radius-md: 14px;
+--radius-lg: 18px;
+--radius-pill: 999px;
+--bg-soft: #f6f7fb;

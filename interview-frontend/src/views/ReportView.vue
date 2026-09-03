@@ -152,51 +152,125 @@ async function doExport(format) {
 </script>
 
 <style scoped>
-.report-view { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
-.report-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
-.report-header h1 { color: var(--primary); font-size: 22px; }
+.report-view { max-width: 900px; margin: 0 auto; padding: 24px 24px 56px; }
+.report-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.report-header h1 {
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 740;
+  letter-spacing: -0.012em;
+}
 .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .btn-docx, .btn-pdf {
-  border: none; color: #fff; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px;
+  border-radius: var(--radius-chip);
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 600;
+  height: 38px;
+  padding: 0 18px;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  transition: var(--transition);
 }
-.btn-docx { background: #2563eb; }
-.btn-pdf { background: #dc2626; }
+.btn-docx { background: var(--ink); color: #fff; border-color: var(--ink); }
+.btn-docx:hover { background: var(--ink-hover); box-shadow: 0 8px 20px rgba(15, 17, 21, 0.18); }
+.btn-pdf { background: var(--card); color: var(--ink); border-color: var(--border); }
+.btn-pdf:hover { border-color: var(--ink); background: var(--ink-soft); }
+.btn-docx:active, .btn-pdf:active { transform: scale(0.98); }
 .ghost-link {
-  color: var(--text-secondary); text-decoration: none; border: 1px solid var(--border);
-  padding: 7px 14px; border-radius: 8px; font-size: 13px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  padding: 0 16px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-chip);
+  font-size: 13.5px;
+  transition: var(--transition);
 }
-.export-msg { color: #059669; font-size: 13px; margin-bottom: 12px; }
-.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
-.empty { text-align: center; padding: 40px; }
-.error { color: #dc2626; }
-.primary-link {
-  display: inline-block; margin-top: 10px; color: var(--primary); text-decoration: none;
+.ghost-link:hover { color: var(--ink); border-color: var(--ink); }
+.export-msg { color: var(--success); font-size: 13px; margin-bottom: 14px; }
+.card {
+  background: var(--card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-sm);
+  padding: 22px 24px;
+  margin-bottom: 16px;
 }
-.score-card { display: flex; gap: 20px; align-items: center; }
-.score-num { font-size: 56px; font-weight: 700; min-width: 160px; text-align: center; }
-.score-num span { font-size: 18px; color: var(--text-secondary); font-weight: 400; }
-.score-good { color: #059669; }
-.score-mid { color: #d97706; }
-.score-low { color: #dc2626; }
-.score-right h3 { margin-bottom: 8px; }
-.summary { color: var(--text); line-height: 1.8; }
-.reason { line-height: 1.8; color: var(--text); }
-h2 { font-size: 17px; margin-bottom: 14px; }
-h2 .level { color: var(--primary); }
-h3 { font-size: 14px; margin-bottom: 8px; }
-h3.good { color: #059669; }
-h3.warn { color: #d97706; }
-.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+.empty { text-align: center; padding: 48px; }
+.error { color: var(--danger); }
+.primary-link { display: inline-block; margin-top: 12px; color: var(--ink); }
+.score-card {
+  display: flex;
+  gap: 28px;
+  align-items: center;
+}
+.score-num {
+  font-size: 64px;
+  font-weight: 780;
+  min-width: 160px;
+  text-align: center;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.score-num span { font-size: 18px; color: var(--text-muted); font-weight: 400; margin-left: 2px; }
+.score-good { color: var(--success); }
+.score-mid { color: var(--warning); }
+.score-low { color: var(--danger); }
+.score-right { flex: 1; }
+.score-right h3 { margin-bottom: 8px; font-size: 14.5px; color: var(--ink); }
+.summary { color: var(--text); line-height: 1.85; font-size: 14.5px; }
+.reason { line-height: 1.85; color: var(--text); font-size: 14.5px; }
+h2 {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 14px;
+  letter-spacing: -0.005em;
+}
+h2 .level { color: var(--ink); }
+h3 { font-size: 14px; margin-bottom: 8px; font-weight: 650; }
+h3.good { color: var(--success-text); }
+h3.warn { color: var(--warning-text); }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 32px; margin-top: 14px; }
 .two-col ul, .suggestions, .plain-list { padding-left: 20px; }
-.two-col li, .suggestions li, .plain-list li { margin-bottom: 6px; line-height: 1.7; }
-.suggestions li::marker { color: var(--primary); font-weight: 600; }
-.clickable { cursor: pointer; user-select: none; display: flex; justify-content: space-between; align-items: center; }
-.fold { font-size: 13px; color: var(--text-secondary); font-weight: 400; }
-.ref-item { border-left: 3px solid var(--border); padding: 6px 12px; margin-bottom: 12px; }
-.ref-item .q { font-weight: 600; margin-bottom: 6px; }
-.ref-text {
-  white-space: pre-wrap; font-family: inherit; font-size: 13px; color: var(--text-secondary);
-  line-height: 1.7; margin: 0;
+.two-col li, .suggestions li, .plain-list li { margin-bottom: 8px; line-height: 1.75; color: var(--text); font-size: 14px; }
+.suggestions li::marker { color: var(--ink); font-weight: 700; }
+.clickable {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
-@media (max-width: 640px) { .two-col { grid-template-columns: 1fr; } }
+.fold { font-size: 13px; color: var(--text-secondary); font-weight: 450; }
+.ref-item {
+  padding: 4px 2px 4px 14px;
+  border-left: 2px solid var(--border-soft);
+  margin-bottom: 14px;
+}
+.ref-item .q { font-weight: 600; margin-bottom: 6px; color: var(--ink); font-size: 14px; }
+.ref-text {
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: 1.75;
+  margin: 0;
+}
+@media (max-width: 640px) {
+  .two-col { grid-template-columns: 1fr; }
+  .score-card { flex-direction: column; align-items: flex-start; }
+}
 </style>
