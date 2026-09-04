@@ -9,8 +9,13 @@
         <a href="#faq">常见问题</a>
       </nav>
       <div class="nav-cta">
-        <button class="btn btn-secondary" @click="goLogin">登录</button>
-        <button class="btn btn-primary" @click="goLogin">开始使用</button>
+        <template v-if="loggedIn">
+          <button class="btn btn-primary" @click="goHome">进入工作台</button>
+        </template>
+        <template v-else>
+          <button class="btn btn-secondary" @click="goLogin">登录</button>
+          <button class="btn btn-primary" @click="goLogin">开始使用</button>
+        </template>
       </div>
     </header>
 
@@ -21,10 +26,12 @@
         从目标岗位梳理、简历解析，到真人感的 AI 模拟面试和结构化复盘，一站完成面试准备。
       </p>
       <div class="hero-cta" data-reveal style="--d: 180ms">
-        <button class="btn btn-primary btn-lg" @click="goLogin">开始使用</button>
+        <button class="btn btn-primary btn-lg" @click="loggedIn ? goHome() : goLogin()">
+          {{ loggedIn ? '进入工作台' : '开始使用' }}
+        </button>
         <a class="btn btn-secondary btn-lg" href="#steps">先看看怎么练</a>
       </div>
-      <p class="hero-note" data-reveal style="--d: 260ms">完全免费 · 无需安装 · 浏览器即开即用</p>
+      <p class="hero-note" data-reveal style="--d: 260ms">免费体验 3 场 · 难度/学历自选 · 浏览器即开即用</p>
     </section>
 
     <!-- 四步练习流程 -->
@@ -67,7 +74,59 @@
       <h2 data-reveal>现在，开始你的第一次模拟面试</h2>
       <p data-reveal style="--d: 90ms">准备好一个目标岗位，3 分钟进入面试状态。</p>
       <div data-reveal style="--d: 180ms">
-        <button class="btn btn-primary btn-lg" @click="goLogin">开始使用</button>
+        <button class="btn btn-primary btn-lg" @click="loggedIn ? goHome() : goLogin()">
+          {{ loggedIn ? '进入工作台' : '开始使用' }}
+        </button>
+      </div>
+    </section>
+
+    <!-- 会员权益 -->
+    <section class="band alt plans-band">
+      <h2 class="band-title" data-reveal>免费能练 3 场，会员解锁全部练习</h2>
+      <div class="plan-cards" data-reveal style="--d: 120ms">
+        <div class="plan-card">
+          <h3>免费版</h3>
+          <p class="price-mini">¥0</p>
+          <p class="sub-price">注册即用，无需付费</p>
+          <ul>
+            <li>3 场完整模拟面试（含报告）</li>
+            <li>评分报告导出 2 次</li>
+            <li>行业调研 / 求职工具可体验</li>
+            <li>难度 · 学历 · 面试官自选</li>
+          </ul>
+          <button class="btn btn-secondary" @click="loggedIn ? goHome() : goLogin()">
+            {{ loggedIn ? '进入工作台' : '免费开始' }}
+          </button>
+        </div>
+        <div class="plan-card">
+          <h3>月度会员</h3>
+          <p class="price-mini">¥9.9<em>/月</em></p>
+          <p class="sub-price">随时开通 · 适合短期冲刺</p>
+          <ul>
+            <li>模拟面试不限场次</li>
+            <li>报告导出不限次</li>
+            <li>行业调研 / 求职工具全解锁</li>
+            <li>兑换码 · 模拟支付开通</li>
+          </ul>
+          <button class="btn btn-secondary" @click="goMembership">
+            {{ loggedIn ? '前往会员中心' : '了解会员' }}
+          </button>
+        </div>
+        <div class="plan-card hot">
+          <span class="tag-mini">更划算</span>
+          <h3>年度会员</h3>
+          <p class="price-mini">¥99<em>/年</em></p>
+          <p class="sub-price">平均每月约 ¥8.3</p>
+          <ul>
+            <li>包含月度会员全部权益</li>
+            <li>一次开通 365 天</li>
+            <li>越练越便宜 · 长期备考推荐</li>
+            <li>兑换码 · 模拟支付开通</li>
+          </ul>
+          <button class="btn btn-primary" @click="goMembership">
+            {{ loggedIn ? '前往会员中心' : '了解会员' }}
+          </button>
+        </div>
       </div>
     </section>
 
@@ -94,15 +153,31 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { authState } from '../store/auth'
 import { bindReveal } from '../utils/reveal'
 
 const router = useRouter()
 const root = ref(null)
 
+const loggedIn = computed(() => Boolean(authState.token))
+
+function goLogin() {
+  router.push({ name: 'login', query: { redirect: '/home' } })
+}
+
+function goHome() {
+  router.push({ name: 'home' })
+}
+
+function goMembership() {
+  if (loggedIn.value) router.push({ name: 'membership' })
+  else router.push({ name: 'login', query: { redirect: '/membership' } })
+}
+
 const steps = [
-  { no: '01', title: '选岗位与面试官', desc: '输入目标岗位，选择技术面、项目面或 HR 面，AI 围绕该岗位出题。' },
+  { no: '01', title: '定面试配置', desc: '输入目标岗位，选择技术面 / HR 面 / 压力面，并按难度（简单·中等·困难）与学历门槛出题。' },
   { no: '02', title: '上传简历（可选）', desc: '解析你的技能栈与项目经历，让提问围绕你的真实背景深入追问。' },
   { no: '03', title: '真人感模拟面试', desc: '支持打字或语音答题，可开摄像头做表情分析，AI 会像真人一样继续追问。' },
   { no: '04', title: '多维评分与复盘', desc: '五维能力雷达、岗位匹配度与逐题改进建议，还有参考要点对照学习。' },
@@ -119,14 +194,11 @@ const bonus = [
 
 const faqs = [
   { q: '需要安装什么吗？', a: '什么都不用装。后端部署好后打开网页即可使用，推荐用 Chrome 或 Edge 浏览器。' },
-  { q: '收费吗？', a: '本项目完全免费自用。它部署在你自己电脑或服务器上，不产生平台会员费用。' },
-  { q: '一次模拟面试怎么进行？', a: '选好岗位与面试官后进入对话，AI 出题、你作答，可语音可打字；结束后面试自动生成评分报告。' },
+  { q: '收费吗？', a: '部署在你自己的电脑或服务器上，免费体验 3 场完整面试；想不限场次可开通会员（本项目为模拟支付演示，不会产生真实扣费）。' },
+  { q: '会员怎么开通？', a: '登录后点头像 → 会员中心：可直接「模拟购买」（月 ¥9.9 / 年 ¥99），也可输入管理员发放的兑换码免费开通。' },
+  { q: '一次模拟面试怎么进行？', a: '配置好岗位、难度、学历与面试官后进入对话，AI 出题、你作答，可语音可打字；结束后面试自动生成评分报告。' },
   { q: '简历、语音和摄像头数据安全吗？', a: '安全。所有数据只写入你自己的数据库，画面仅在本机处理，不会上传到任何第三方。' },
 ]
-
-function goLogin() {
-  router.push({ name: 'login', query: { redirect: '/home' } })
-}
 
 onMounted(() => {
   bindReveal(root.value)
@@ -361,6 +433,50 @@ onMounted(() => {
   color: var(--text-secondary);
   font-size: 14px;
   line-height: 1.8;
+}
+
+/* 会员权益对比 */
+.plans-band .band-title { margin-bottom: 26px; }
+.plan-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+  max-width: 980px;
+  margin: 0 auto;
+}
+.plan-card {
+  background: var(--card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-md);
+  padding: 26px 26px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  position: relative;
+  transition: var(--transition);
+}
+.plan-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+.plan-card h3 { font-size: 15px; color: var(--text-secondary); font-weight: 650; margin: 0; }
+.plan-card .price-mini { font-size: 34px; font-weight: 800; color: var(--ink); margin: 2px 0 0; }
+.plan-card .price-mini em { font-size: 14px; font-style: normal; color: var(--text-muted); font-weight: 500; }
+.sub-price { margin: -2px 0 8px; font-size: 12.5px; color: var(--text-muted); }
+.plan-card ul { list-style: none; padding: 0; margin: 0 0 10px; display: flex; flex-direction: column; gap: 7px; }
+.plan-card li { font-size: 13.5px; color: var(--text-secondary); }
+.plan-card li::before { content: '✓ '; color: var(--success-text); font-weight: 700; }
+.plan-card .btn { align-self: stretch; }
+.plan-card.hot { border-color: var(--ink); box-shadow: 0 14px 30px rgba(15, 17, 21, 0.1); }
+.tag-mini {
+  position: absolute;
+  top: -11px;
+  right: 18px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 650;
+  padding: 3px 12px;
+  border-radius: var(--radius-chip);
 }
 
 /* 页脚 */

@@ -28,12 +28,9 @@ const router = createRouter({
   },
 })
 
-// 登录守卫：业务页需登录；落地页/登录页公开；已登录访问落地页 → 直接进工作台
+// 登录守卫：业务页需登录；落地页/登录页公开；落地页不因登录自动跳转（供点 logo 回官网）
 router.beforeEach((to) => {
   const logged = Boolean(authState.token)
-  if (to.name === 'landing' && logged) {
-    return { name: 'home' }
-  }
   if (!to.meta.public && !logged) {
     return { name: 'login', query: { redirect: to.fullPath } }
   }

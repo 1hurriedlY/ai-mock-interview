@@ -83,8 +83,8 @@ const plans = computed(() => {
   const p = memberState.plans
   if (p && p.length) return p
   return [
-    { key: 'month', name: '月度会员', days: 30, price_cents: 1990 },
-    { key: 'year', name: '年度会员', days: 365, price_cents: 19900 },
+    { key: 'month', name: '月度会员', days: 30, price_cents: 990 },
+    { key: 'year', name: '年度会员', days: 365, price_cents: 9900 },
   ]
 })
 

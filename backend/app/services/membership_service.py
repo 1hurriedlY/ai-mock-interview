@@ -21,8 +21,8 @@ FREE_EXPORT_QUOTA = 2      # 免费可导出的报告次数
 
 # 会员套餐（模拟支付；金额单位：分）
 MEMBER_PLANS = {
-    "month": {"name": "月度会员", "days": 30, "price_cents": 1990},
-    "year": {"name": "年度会员", "days": 365, "price_cents": 19900},
+    "month": {"name": "月度会员", "days": 30, "price_cents": 990},
+    "year": {"name": "年度会员", "days": 365, "price_cents": 9900},
 }
 
 

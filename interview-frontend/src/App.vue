@@ -9,7 +9,7 @@
 
     <template v-if="!isStandalone">
       <aside class="side-nav">
-        <div class="brand">模拟面试 AI 助手</div>
+        <router-link class="brand" to="/" title="回到官网首页">模拟面试 AI 助手</router-link>
 
         <nav class="links">
           <router-link to="/home">首页</router-link>
@@ -195,7 +195,11 @@ onBeforeUnmount(() => {
   font-size: 15px;
   color: var(--ink);
   padding: 2px 10px 18px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity 0.15s var(--ease);
 }
+.brand:hover { opacity: 0.82; }
 .brand::before {
   content: '●‿●';
   display: inline-flex;
