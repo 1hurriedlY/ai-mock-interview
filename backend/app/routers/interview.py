@@ -36,6 +36,7 @@ from ..services.agents.question_agent import (
     ROLE_NAMES,
 )
 from ..services.report_service import generate_and_store_report
+from ..services.membership_service import consume_free, ensure_allowed
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +219,12 @@ def start_interview(
     if education not in VALID_EDUCATION:
         raise HTTPException(status_code=400, detail=f"不支持的学历门槛：{education}")
 
+    # 会员/免费额度拦截（非会员免费 3 场）
+    try:
+        ensure_allowed(current, "interview")
+    except PermissionError as exc:
+        raise HTTPException(status_code=402, detail=str(exc))
+
     # 取简历分析结果（缓存中找；不存在则无简历模式）
     resume_analysis = None
     resume_text = ""
@@ -279,8 +286,9 @@ def start_interview(
     # 开场白（本地模板，不等待大模型）
     opening = _opening_message(session.id, role, body.job_title, difficulty, education)
 
-    # 落库开场白（assistant）便于历史回看
+    # 落库开场白（assistant）便于历史回看；非会员在此扣减一次免费额度
     db.add(ChatMessage(session_id=session.id, role="assistant", content=opening, reference=""))
+    consume_free(current, "interview")
     db.commit()
 
     return StartResponse(

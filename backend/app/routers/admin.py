@@ -24,11 +24,15 @@ from ..models import (
     IndustryReport,
     InterviewReport,
     InterviewSession,
+    MemberOrder,
+    MembershipCode,
     ProjectReport,
     User,
 )
 from ..redis_client import redis_client
 from ..services.agents.question_agent import ROLE_NAMES
+from ..services.membership_service import generate_codes as _gen_codes
+from ..services.membership_service import grant_days, is_member
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +180,11 @@ def delete_user(
     db.query(InterviewSession).filter(InterviewSession.user_id == user_id).delete()
     db.query(IndustryReport).filter(IndustryReport.user_id == user_id).delete()
     db.query(ProjectReport).filter(ProjectReport.user_id == user_id).delete()
+    # 会员数据：删除订单，兑换码解绑（无库级外键，业务层兜底）
+    db.query(MemberOrder).filter(MemberOrder.user_id == user_id).delete()
+    db.query(MembershipCode).filter(MembershipCode.used_by == user_id).update(
+        {"used_by": None, "used_at": None}, synchronize_session=False
+    )
     db.delete(user)
     db.commit()
 
@@ -412,3 +421,84 @@ def _preview_json(raw: str | None, limit: int) -> str:
         text = raw
     text = " ".join(text.split())
     return text[:limit] + ("…" if len(text) > limit else "")
+
+
+# ---------- 会员管理 ----------
+@router.get("/members")
+def list_members(
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """所有用户会员状态与额度（会员管理页用）。"""
+    users = db.scalars(select(User).order_by(User.id.asc())).all()
+    return [
+        {
+            "id": u.id,
+            "username": u.username,
+            "is_member": is_member(u),
+            "member_until": _fmt(u.member_until),
+            "free_interview_used": u.free_quota_used or 0,
+            "export_quota_used": u.export_quota_used or 0,
+        }
+        for u in users
+    ]
+
+
+@router.post("/members/users/{user_id}/grant")
+def grant_member_days(
+    user_id: int,
+    body: dict,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """手动为用户开通/顺延会员（days：天数，1~3650）。"""
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    days = int((body or {}).get("days", 30) or 30)
+    if not (1 <= days <= 3650):
+        raise HTTPException(status_code=400, detail="开通天数需在 1~3650 之间")
+    grant_days(user, days)
+    db.commit()
+    logger.info("管理员 %s 为用户 %s 开通会员 %s 天", current.id, user_id, days)
+    return {"ok": True, "id": user_id, "member_until": _fmt(user.member_until)}
+
+
+@router.get("/members/codes")
+def list_codes(
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """兑换码列表（含使用状态）。"""
+    rows = db.execute(
+        select(MembershipCode, User.username)
+        .outerjoin(User, MembershipCode.used_by == User.id)
+        .order_by(MembershipCode.id.desc())
+        .limit(200)
+    ).all()
+    return [
+        {
+            "id": c.id,
+            "code": c.code,
+            "grant_days": c.grant_days,
+            "used": c.used_by is not None,
+            "used_by": username or "",
+            "used_at": _fmt(c.used_at),
+            "created_at": _fmt(c.created_at),
+        }
+        for c, username in rows
+    ]
+
+
+@router.post("/members/codes/generate")
+def make_codes(
+    body: dict,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """批量生成兑换码。body: {count:10, days:30}。"""
+    count = max(1, min(int((body or {}).get("count", 10) or 10), 100))
+    days = max(1, min(int((body or {}).get("days", 30) or 30), 3650))
+    codes = _gen_codes(db, count, days)
+    logger.info("管理员 %s 生成兑换码 %s 个（%s 天）", current.id, len(codes), days)
+    return {"ok": True, "count": len(codes), "days": days, "codes": codes}

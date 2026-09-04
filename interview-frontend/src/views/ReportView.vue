@@ -96,12 +96,13 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { downloadReport, exportApi, historyApi } from '../api'
 import ScoreRadar from '../components/ScoreRadar.vue'
 import ExpressionChart from '../components/ExpressionChart.vue'
 
 const route = useRoute()
+const router = useRouter()
 const report = ref(null)
 const error = ref('')
 const isGenerating = ref(false)
@@ -198,7 +199,12 @@ async function doExport(format) {
     exportMsg.value = `${format.toUpperCase()} 已导出：${info.filename}（${info.size} 字节）`
   } catch (e) {
     exportMsg.value = ''
-    alert(e.response?.data?.detail || '导出失败，请稍后重试')
+    const detail = e.response?.data?.detail || '导出失败，请稍后重试'
+    if (e.response?.status === 402 && window.confirm(`${detail}\n\n是否前往会员中心开通？`)) {
+      router.push({ name: 'membership' })
+      return
+    }
+    alert(detail)
   }
 }
 </script>

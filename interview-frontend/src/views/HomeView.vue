@@ -93,7 +93,17 @@
 
       <!-- 主操作 -->
       <div class="action-row">
-        <p class="action-hint">准备好后开始，途中可随时语音回答、开启表情分析。</p>
+        <div class="act-left">
+          <p class="action-hint">准备好后开始，途中可随时语音回答、开启表情分析。</p>
+          <p v-if="memberState.loaded" class="quota" :class="{ empty: quotaEmpty }">
+            <template v-if="memberState.is_member">会员有效 · 面试不限场次（至 {{ memberState.member_until }}）</template>
+            <template v-else-if="!quotaEmpty">免费体验剩余 <b>{{ memberState.free_interview.left }}</b> 场，会员不限场次</template>
+            <template v-else>
+              免费次数已用完
+              <router-link class="go" to="/membership">开通会员 →</router-link>
+            </template>
+          </p>
+        </div>
         <button class="btn btn-primary btn-lg" :disabled="!jobTitle || starting" @click="startInterview">
           {{ starting ? '准备中…' : '开始面试' }}
         </button>
@@ -107,6 +117,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { interviewApi, resumeApi } from '../api'
 import { Settings } from '../utils/settings'
+import { memberState, refreshMember } from '../store/member'
 
 const router = useRouter()
 
@@ -131,6 +142,12 @@ const educations = [
 ]
 const activeRoleDesc = computed(
   () => roles.value.find((r) => r.key === role.value)?.description || ''
+)
+// 免费额度是否耗尽（未加载完成时不算空，避免误拦）
+const quotaEmpty = computed(
+  () => memberState.loaded
+    && !memberState.is_member
+    && (memberState.free_interview?.left ?? 0) <= 0
 )
 
 // 面试配置下拉（难度 / 学历 / 面试官）
@@ -183,6 +200,7 @@ const error = ref('')
 onMounted(async () => {
   try {
     roles.value = await interviewApi.roles()
+    refreshMember()
   } catch (e) {
     error.value = e.response?.data?.detail || '加载面试官角色失败'
   }
@@ -223,6 +241,11 @@ async function uploadResume(file) {
 
 async function startInterview() {
   if (!jobTitle.value || starting.value) return
+  // 会员/额度预检：额度耗尽直接引导开通（后端仍有强校验兜底）
+  if (quotaEmpty.value) {
+    router.push({ name: 'membership' })
+    return
+  }
   starting.value = true
   error.value = ''
   try {
@@ -232,9 +255,15 @@ async function startInterview() {
       resume.value.resume_id || '',
       { difficulty: difficulty.value, education: education.value }
     )
+    // 成功后刷新一次剩余额度
+    refreshMember()
     router.push({ name: 'interview', params: { id: data.session_id } })
   } catch (e) {
     error.value = e.response?.data?.detail || '开启面试失败，请稍后重试'
+    if (e.response?.status === 402) {
+      refreshMember()
+      router.push({ name: 'membership' })
+    }
   } finally {
     starting.value = false
   }
@@ -541,7 +570,16 @@ async function startInterview() {
   gap: 16px;
   flex-wrap: wrap;
 }
+.act-left { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .action-hint { color: var(--text-muted); font-size: 13px; }
+.quota { color: var(--text-secondary); font-size: 12.5px; }
+.quota b { color: var(--ink); font-weight: 700; }
+.quota.empty { color: var(--danger); }
+.go {
+  color: var(--ink); font-weight: 650; text-decoration: none;
+  border-bottom: 1px dashed currentColor; margin-left: 2px;
+}
+.go:hover { color: var(--danger); border-color: var(--danger); }
 
 @media (max-width: 640px) {
   .hero h1 { font-size: 24px; }

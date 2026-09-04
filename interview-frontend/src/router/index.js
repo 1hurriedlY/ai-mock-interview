@@ -16,6 +16,7 @@ const routes = [
   { path: '/industry', name: 'industry', component: () => import('../views/IndustryView.vue') },
   { path: '/project', name: 'project', component: () => import('../views/ProjectView.vue') },
   { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue') },
+  { path: '/membership', name: 'membership', component: () => import('../views/MembershipView.vue') },
   { path: '/admin', name: 'admin', component: () => import('../views/AdminView.vue'), meta: { admin: true } },
 ]
 

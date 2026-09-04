@@ -34,12 +34,20 @@
                   <span class="avatar lg" :style="avCss">{{ initials }}</span>
                   <div class="who">
                     <b>{{ auth.username }}</b>
+                    <span class="m-chip" :class="memberState.is_member ? 'on' : ''">
+                      {{ memberState.loaded
+                        ? (memberState.is_member ? `会员 · 至 ${memberState.member_until}` : `免费面试 ${memberState.free_interview?.left ?? 0} 次`)
+                        : '' }}
+                    </span>
                     <span v-if="auth.isAdmin" class="admin-badge">管理员</span>
                   </div>
                 </div>
 
                 <!-- 入口区 -->
                 <div class="pop-menu">
+                  <button class="nav-btn" @click="openMember">
+                    <span>会员中心</span><span class="arrow">→</span>
+                  </button>
                   <button class="nav-btn" @click="openSettings">
                     <span>设置</span><span class="arrow">→</span>
                   </button>
@@ -72,11 +80,12 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authState, clearAuth } from './store/auth'
 import { avatarStyle, initialsOf } from './utils/avatar'
 import { Settings } from './utils/settings'
+import { clearMember, memberState, refreshMember } from './store/member'
 
 const route = useRoute()
 const router = useRouter()
@@ -123,6 +132,21 @@ function openSettings() {
   popOpen.value = false
   router.push({ name: 'settings' })
 }
+
+function openMember() {
+  popOpen.value = false
+  router.push({ name: 'membership' })
+}
+
+// 登录态变化时同步会员状态
+watch(
+  () => auth.token,
+  (tk) => {
+    if (tk) refreshMember()
+    else clearMember()
+  },
+  { immediate: true }
+)
 
 function logout() {
   clearAuth()
@@ -270,6 +294,17 @@ onBeforeUnmount(() => {
   padding: 2px 10px;
   border-radius: var(--radius-chip);
 }
+.m-chip {
+  width: fit-content;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  padding: 1px 8px;
+  border-radius: var(--radius-chip);
+}
+.m-chip.on { color: var(--success-text); background: var(--success-bg); border-color: transparent; }
 
 /* 用户小窗 */
 .pop {

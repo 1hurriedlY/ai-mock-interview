@@ -107,6 +107,13 @@ export const projectApi = {
   remove: (id) => http.delete(`/project/history/${id}`).then(r => r.data),
 }
 
+export const memberApi = {
+  status: () => http.get('/member/status').then(r => r.data),
+  redeem: (code) => http.post('/member/codes/redeem', { code }).then(r => r.data),
+  createOrder: (plan) => http.post('/member/orders', { plan }).then(r => r.data),
+  mockPay: (orderId) => http.post(`/member/orders/${orderId}/mock-pay`).then(r => r.data),
+}
+
 export const adminApi = {
   users: () => http.get('/admin/users').then(r => r.data),
   deleteUser: (id) => http.delete(`/admin/users/${id}`).then(r => r.data),
@@ -117,6 +124,10 @@ export const adminApi = {
   deleteIndustry: (id) => http.delete(`/admin/industry/${id}`).then(r => r.data),
   project: () => http.get('/admin/project').then(r => r.data),
   deleteProject: (id) => http.delete(`/admin/project/${id}`).then(r => r.data),
+  members: () => http.get('/admin/members').then(r => r.data),
+  grantMember: (id, days) => http.post(`/admin/members/users/${id}/grant`, { days }).then(r => r.data),
+  codes: () => http.get('/admin/members/codes').then(r => r.data),
+  genCodes: (count, days) => http.post('/admin/members/codes/generate', { count, days }).then(r => r.data),
 }
 
 export default http

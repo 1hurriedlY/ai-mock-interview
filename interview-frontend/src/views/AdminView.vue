@@ -149,6 +149,56 @@
       <p v-else class="empty">暂无求职项目记录</p>
     </section>
 
+    <!-- 会员管理 -->
+    <section v-if="tab === 'members'" class="panel card">
+      <div class="bar">
+        <h2>会员管理 <span class="cnt">会员 {{ memberCount }} / {{ members.length }}</span></h2>
+        <div class="filters">
+          <input v-model.trim="qMember" class="search" placeholder="搜索用户 / ID" />
+          <button class="ghost" :disabled="mAction === 'gen'" @click="genCodes">
+            {{ mAction === 'gen' ? '生成中…' : '生成兑换码' }}
+          </button>
+        </div>
+      </div>
+      <table v-if="filteredMembers.length" class="tbl">
+        <thead><tr>
+          <th>ID</th><th>用户</th><th>会员状态</th><th>到期时间</th>
+          <th>免费面试已用</th><th>导出已用</th><th>操作</th>
+        </tr></thead>
+        <tbody>
+          <tr v-for="m in filteredMembers" :key="m.id">
+            <td>{{ m.id }}</td>
+            <td class="strong">{{ m.username }}</td>
+            <td><span class="tag" :class="m.is_member ? 'tag-done' : 'tag-user'">{{ m.is_member ? '会员' : '普通' }}</span></td>
+            <td class="muted">{{ m.member_until || '—' }}</td>
+            <td>{{ m.free_interview_used }}/3</td>
+            <td>{{ m.export_quota_used }}/2</td>
+            <td><button class="btn-view" :disabled="mAction === 'g' + m.id" @click="grantMember(m)">{{ mAction === 'g' + m.id ? '…' : '开通/顺延' }}</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-else class="empty">没有匹配的用户</p>
+
+      <div class="bar codes-bar">
+        <h2>兑换码 <span class="cnt">{{ codes.length }}</span></h2>
+      </div>
+      <table v-if="codes.length" class="tbl">
+        <thead><tr><th>ID</th><th>兑换码</th><th>天数</th><th>状态</th><th>使用者</th><th>创建时间</th><th>操作</th></tr></thead>
+        <tbody>
+          <tr v-for="c in codes" :key="c.id">
+            <td>{{ c.id }}</td>
+            <td class="code">{{ c.code }}</td>
+            <td>{{ c.grant_days }}</td>
+            <td><span class="tag" :class="c.used ? 'tag-done' : 'tag-run'">{{ c.used ? '已使用' : '未使用' }}</span></td>
+            <td class="muted">{{ c.used ? `${c.used_by} · ${c.used_at}` : '—' }}</td>
+            <td class="muted">{{ c.created_at }}</td>
+            <td><button class="btn-view" @click="copyCode(c)">复制</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-else class="empty">暂无兑换码，点右上「生成兑换码」发放</p>
+    </section>
+
     <!-- 会话审阅弹窗 -->
     <div v-if="detail.open" class="overlay" @click.self="detail.open = false">
       <div class="modal card">
@@ -193,6 +243,7 @@ const tabs = [
   { key: 'sessions', label: '面试会话' },
   { key: 'industry', label: '行业调研' },
   { key: 'project', label: '求职项目' },
+  { key: 'members', label: '会员管理' },
 ]
 
 const tab = ref('users')
@@ -200,6 +251,9 @@ const users = ref([])
 const sessions = ref([])
 const industry = ref([])
 const project = ref([])
+const members = ref([])
+const codes = ref([])
+const mAction = ref('') // 进行中的操作（防重复点击）
 const loading = ref(false)
 const error = ref('')
 const deleting = ref(null)
@@ -210,6 +264,7 @@ const qSession = ref('')
 const qStatus = ref('')
 const qIndustry = ref('')
 const qProject = ref('')
+const qMember = ref('')
 
 // 会话审阅弹窗
 const detail = ref({ open: false, loading: false, error: '', data: null })
@@ -237,6 +292,12 @@ const filteredProject = computed(() => {
   if (!k) return project.value
   return project.value.filter((r) => (r.project_name || '').toLowerCase().includes(k) || r.username.toLowerCase().includes(k))
 })
+const filteredMembers = computed(() => {
+  const k = qMember.value.trim().toLowerCase()
+  if (!k) return members.value
+  return members.value.filter((m) => m.username.toLowerCase().includes(k) || String(m.id) === k)
+})
+const memberCount = computed(() => members.value.filter((m) => m.is_member).length)
 
 // 统计（用户维度全量精确；会话状态按最近 500 场快照）
 const admins = computed(() => users.value.filter((u) => u.is_admin))
@@ -252,20 +313,76 @@ async function loadAll() {
   loading.value = true
   error.value = ''
   try {
-    const [u, s, i, p] = await Promise.all([
+    const [u, s, i, p, m, c] = await Promise.all([
       adminApi.users(),
       adminApi.sessions(),
       adminApi.industry(),
       adminApi.project(),
+      adminApi.members(),
+      adminApi.codes(),
     ])
     users.value = u
     sessions.value = s
     industry.value = i
     project.value = p
+    members.value = m
+    codes.value = c
   } catch (e) {
     error.value = e.response?.data?.detail || '加载失败，请确认使用管理员账号'
   } finally {
     loading.value = false
+  }
+}
+
+async function refreshMembersOnly() {
+  try {
+    const [m, c] = await Promise.all([adminApi.members(), adminApi.codes()])
+    members.value = m
+    codes.value = c
+  } catch (e) {
+    error.value = e.response?.data?.detail || '刷新失败'
+  }
+}
+
+async function genCodes() {
+  const count = Number(window.prompt('生成兑换码数量（1-100）：', '10'))
+  if (!count) return
+  const days = Number(window.prompt('每张开通天数：', '30'))
+  if (!days) return
+  mAction.value = 'gen'
+  error.value = ''
+  try {
+    await adminApi.genCodes(count, days)
+    await refreshMembersOnly()
+  } catch (e) {
+    error.value = e.response?.data?.detail || '生成失败'
+  } finally {
+    mAction.value = ''
+  }
+}
+
+async function grantMember(m) {
+  const days = Number(window.prompt(`为「${m.username}」开通会员天数（当前 ${m.member_until || '非会员'}）：`, '30'))
+  if (!days) return
+  mAction.value = 'g' + m.id
+  error.value = ''
+  try {
+    const r = await adminApi.grantMember(m.id, days)
+    m.is_member = true
+    m.member_until = r.member_until
+  } catch (e) {
+    error.value = e.response?.data?.detail || '开通失败'
+  } finally {
+    mAction.value = ''
+  }
+}
+
+async function copyCode(c) {
+  try {
+    await navigator.clipboard.writeText(c.code)
+    window.alert(`已复制：${c.code}`)
+  } catch {
+    window.prompt('复制兑换码：', c.code)
   }
 }
 
@@ -453,6 +570,13 @@ onMounted(loadAll)
 .ghost:hover { color: var(--ink); border-color: var(--ink); }
 .ghost:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.codes-bar { margin-top: 18px; }
+.code {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  letter-spacing: 0.05em;
+  font-weight: 650;
+  color: var(--ink);
+}
 /* 弹窗 */
 .overlay {
   position: fixed;

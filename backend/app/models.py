@@ -38,6 +38,17 @@ class User(Base):
         Boolean, default=False, nullable=False, server_default="0",
         comment="管理员标记：可查看/删除所有账号数据",
     )
+    member_until: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, comment="会员到期时间（NULL=非会员；判断以 server 时间为准）"
+    )
+    free_quota_used: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False, server_default="0",
+        comment="免费面试已用场次（会员不计）",
+    )
+    export_quota_used: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False, server_default="0",
+        comment="免费报告导出已用次数",
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )
@@ -154,3 +165,48 @@ class ProjectReport(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )
+
+
+class MembershipCode(Base):
+    """会员兑换码（后台生成，激活后绑定用户）。
+
+    说明：used_by 有意不建库级外键（MySQL 对本组合 SET NULL FK 建表偶发 3780 不兼容），
+    孤儿引用由业务层清理（见 admin.delete_user）。
+    """
+
+    __tablename__ = "membership_codes"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=False)
+    grant_days: Mapped[int] = mapped_column(Integer, default=30, nullable=False, comment="激活赠送天数")
+    used_by: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, index=True,
+        comment="已使用的用户 id（NULL=未使用）",
+    )
+    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+
+
+class MemberOrder(Base):
+    """会员订单（模拟支付：渠道固定 mock，状态机 pending/paid/refunded）。"""
+
+    __tablename__ = "member_orders"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, index=True, nullable=False,
+        comment="下单用户 id（无库级外键，删除用户时由业务层级联清理）",
+    )
+    plan: Mapped[str] = mapped_column(String(16), nullable=False, comment="month/year")
+    plan_name: Mapped[str] = mapped_column(String(32), default="", nullable=False)
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False, comment="金额（分）")
+    grant_days: Mapped[int] = mapped_column(Integer, nullable=False, comment="开通天数")
+    status: Mapped[str] = mapped_column(
+        String(16), default="pending", nullable=False, comment="pending/paid/refunded"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

@@ -40,7 +40,30 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _migrate_users_is_admin()
     _migrate_session_fields()
+    _migrate_member_fields()
     _seed_admin()
+
+
+def _migrate_member_fields() -> None:
+    """增量迁移：users 表补会员字段（到期时间/免费面试已用/免费导出已用）。"""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    if "users" not in insp.get_table_names():
+        return
+    columns = {c["name"] for c in insp.get_columns("users")}
+    plan = []
+    if "member_until" not in columns:
+        plan.append("member_until DATETIME NULL")
+    if "free_quota_used" not in columns:
+        plan.append("free_quota_used INT NOT NULL DEFAULT 0")
+    if "export_quota_used" not in columns:
+        plan.append("export_quota_used INT NOT NULL DEFAULT 0")
+    if not plan:
+        return
+    with engine.begin() as conn:
+        for ddl in plan:
+            conn.execute(text(f"ALTER TABLE users ADD COLUMN {ddl}"))
 
 
 def _migrate_session_fields() -> None:

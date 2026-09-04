@@ -15,6 +15,7 @@ from ..auth import get_current_user
 from ..database import get_db
 from ..models import InterviewReport, InterviewSession, User
 from ..services import export_service
+from ..services.membership_service import consume_free, ensure_allowed
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +56,20 @@ def export_report(
 
     report, session = _report_or_404(db, report_id, current)
 
+    # 会员/免费导出额度（非会员限 2 次）
+    try:
+        ensure_allowed(current, "export")
+    except PermissionError as exc:
+        raise HTTPException(status_code=402, detail=str(exc))
+
     try:
         info = export_service.write_export(report, session, fmt)
     except Exception as exc:
         logger.exception("导出失败：report_id=%s format=%s", report_id, fmt)
         raise HTTPException(status_code=500, detail=f"导出失败：{exc}")
 
+    consume_free(current, "export")
+    db.commit()
     return info
 
 
@@ -85,12 +94,18 @@ def file_report(
 
     path = export_service.export_path(report.id, fmt)
     if not path.exists():
-        # 文件被清理过则重新生成
+        # 文件被清理过则重新生成（重新生成同样消耗一次免费额度，防绕过）
+        try:
+            ensure_allowed(current, "export")
+        except PermissionError as exc:
+            raise HTTPException(status_code=402, detail=str(exc))
         try:
             export_service.write_export(report, session, fmt)
         except Exception as exc:
             logger.exception("生成下载文件失败：%s", exc)
             raise HTTPException(status_code=500, detail=f"生成下载文件失败：{exc}")
+        consume_free(current, "export")
+        db.commit()
 
     return FileResponse(
         path=str(path),
