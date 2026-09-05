@@ -25,10 +25,13 @@
               class="msg"
               :class="m.role === 'user' ? 'right' : 'left'"
             >
+              <span v-if="m.role === 'user'" class="av user" :style="userAvatar.style">{{ userAvatar.label }}</span>
+              <span v-else class="av ai" :style="aiAvatar.style">{{ aiAvatar.label }}</span>
               <div class="bubble">{{ m.content }}</div>
             </div>
             <!-- 打字机光标 -->
             <div v-if="typingText" class="msg left">
+              <span class="av ai" :style="aiAvatar.style">{{ aiAvatar.label }}</span>
               <div class="bubble typing">{{ typingText }}<span class="cursor">▍</span></div>
             </div>
           </div>
@@ -83,11 +86,20 @@ import { useTypewriter } from '../composables/useTypewriter'
 import { useVoice } from '../composables/useVoice'
 import { useExpression } from '../composables/useExpression'
 import { Settings } from '../utils/settings'
+import { avatarStyle, initialsOf } from '../utils/avatar'
+import { authState } from '../store/auth'
 import VoiceControl from '../components/VoiceControl.vue'
 import CameraPreview from '../components/CameraPreview.vue'
 
 const route = useRoute()
 const router = useRouter()
+
+// 对话头像：AI 面试官固定形象，用户为本人生成头像
+const aiAvatar = { style: avatarStyle('AI面试官'), label: initialsOf('AI面试官') }
+const userAvatar = computed(() => ({
+  style: avatarStyle(authState.username),
+  label: initialsOf(authState.username),
+}))
 
 const STAGE_NAMES = {
   opening: '开场自我介绍',
@@ -304,9 +316,18 @@ onBeforeUnmount(() => {
   .chat-layout { flex-direction: column; }
   .cam-sidebar { width: 100%; order: -1; }
 }
-.msg { display: flex; margin-bottom: 16px; }
+.msg { display: flex; margin-bottom: 16px; align-items: flex-end; gap: 10px; }
 .msg.left { justify-content: flex-start; }
 .msg.right { justify-content: flex-end; }
+.msg .av {
+  width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%;
+  color: #fff; font-size: 12px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), 0 2px 6px rgba(0, 0, 0, 0.12);
+  user-select: none;
+}
+.msg.right .av { order: 2; margin-left: 0; }
+.msg.right .bubble { margin-right: 0; }
 .bubble {
   max-width: 82%;
   padding: 13px 20px;

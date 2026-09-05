@@ -58,6 +58,8 @@
 
           <div class="msgs">
             <div v-for="m in detail.messages" :key="m.id" class="msg" :class="m.role === 'user' ? 'right' : 'left'">
+              <span v-if="m.role === 'user'" class="av user" :style="userAvatar.style">{{ userAvatar.label }}</span>
+              <span v-else class="av ai" :style="aiAvatar.style">{{ aiAvatar.label }}</span>
               <div class="bubble">
                 {{ m.content }}
                 <div v-if="m.role === 'assistant' && m.reference" class="ref">
@@ -74,8 +76,16 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { historyApi } from '../api'
+import { avatarStyle, initialsOf } from '../utils/avatar'
+import { authState } from '../store/auth'
+
+const aiAvatar = { style: avatarStyle('AI面试官'), label: initialsOf('AI面试官') }
+const userAvatar = computed(() => ({
+  style: avatarStyle(authState.username),
+  label: initialsOf(authState.username),
+}))
 
 const sessions = ref([])
 const detail = ref(null)
@@ -232,8 +242,16 @@ async function removeSession(s) {
 }
 .meta-line { color: var(--text-secondary); font-size: 12.5px; margin: 10px 0 16px; }
 .msgs { max-height: 66vh; overflow-y: auto; }
-.msg { display: flex; margin-bottom: 12px; }
+.msg { display: flex; margin-bottom: 12px; align-items: flex-end; gap: 10px; }
 .msg.right { justify-content: flex-end; }
+.msg .av {
+  width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%;
+  color: #fff; font-size: 12px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), 0 2px 6px rgba(0, 0, 0, 0.12);
+  user-select: none;
+}
+.msg.right .av { order: 2; }
 .bubble {
   max-width: 92%;
   background: var(--ink-soft);

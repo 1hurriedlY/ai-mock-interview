@@ -6,6 +6,7 @@
       <nav class="nav-links">
         <a href="#steps">怎么练</a>
         <a href="#bonus">更多能力</a>
+        <a href="#plans">价格</a>
         <a href="#faq">常见问题</a>
       </nav>
       <div class="nav-cta">
@@ -69,6 +70,15 @@
       </div>
     </section>
 
+    <!-- 演示示例 -->
+    <section class="band" id="demo">
+      <h2 class="band-title" data-reveal>先看它怎么陪你练（演示示例）</h2>
+      <p class="demo-sub" data-reveal style="--d: 90ms">首页准备 → 流式对话（含语音 / 表情视频）→ 报告复盘</p>
+      <div data-reveal style="--d: 160ms">
+        <LandingDemo />
+      </div>
+    </section>
+
     <!-- 收口 CTA -->
     <section class="cta-band">
       <h2 data-reveal>现在，开始你的第一次模拟面试</h2>
@@ -81,7 +91,7 @@
     </section>
 
     <!-- 会员权益 -->
-    <section class="band alt plans-band">
+    <section id="plans" class="band alt plans-band">
       <h2 class="band-title" data-reveal>免费能练 3 场，会员解锁全部练习</h2>
       <div class="plan-cards" data-reveal style="--d: 120ms">
         <div class="plan-card">
@@ -157,6 +167,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { authState } from '../store/auth'
 import { bindReveal } from '../utils/reveal'
+import LandingDemo from '../components/LandingDemo.vue'
 
 const router = useRouter()
 const root = ref(null)
@@ -437,6 +448,7 @@ onMounted(() => {
 
 /* 会员权益对比 */
 .plans-band .band-title { margin-bottom: 26px; }
+.demo-sub { text-align: center; color: var(--text-secondary); font-size: 14px; margin: -14px 0 20px; }
 .plan-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
