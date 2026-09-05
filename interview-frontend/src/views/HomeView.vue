@@ -86,6 +86,7 @@
             </div>
           </div>
           <p v-if="activeRoleDesc" class="role-tip">{{ activeRoleDesc }}</p>
+          <p v-if="resume.summary" class="resume-linked">已关联简历 · 面试题将围绕你的技能与真实项目自动生成</p>
         </div>
       </div>
 
@@ -572,6 +573,12 @@ async function startInterview() {
 }
 .act-left { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .action-hint { color: var(--text-muted); font-size: 13px; }
+.resume-linked {
+  margin: 10px 2px 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--success);
+}
 .quota { color: var(--text-secondary); font-size: 12.5px; }
 .quota b { color: var(--ink); font-weight: 700; }
 .quota.empty { color: var(--danger); }

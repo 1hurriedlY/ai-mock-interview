@@ -23,7 +23,8 @@
                 <span class="up-done">已生成候选人画像</span>
               </template>
             </div>
-            <div class="drop-hint">点击选择 / 拖入简历<br />支持 PDF · Word · TXT · Markdown，选中后自动上传解析</div>
+            <div v-if="!rShow || !rDone" class="drop-hint">点击选择 / 拖入简历<br />支持 PDF · Word · TXT · Markdown，选中后自动上传解析</div>
+            <div v-else class="drop-hint ok">面试将根据这份简历的技能与真实项目自动出题</div>
           </div>
           <!-- 右：面试配置 -->
           <div class="col cfg-panel">
@@ -443,6 +444,7 @@ onBeforeUnmount(() => {
 .col { border: 1px solid var(--border-soft); background: var(--card); border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
 .zone-h { font-size: 12.5px; font-weight: 750; color: var(--text-secondary); letter-spacing: 0.02em; }
 .drop-hint { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--text-muted); font-size: 12.5px; line-height: 1.8; border: 1.5px dashed var(--border); border-radius: 12px; min-height: 92px; }
+.drop-hint.ok { border-style: solid; border-color: var(--success); color: var(--success); font-weight: 650; font-size: 13px; }
 .jobfield { border: 1.5px solid var(--border); border-radius: 12px; background: var(--bg-soft); padding: 9px 14px; min-height: 48px; display: flex; align-items: center; transition: border-color 0.3s; }
 .jobfield.focus-job { border-color: var(--ink); background: #fff; box-shadow: 0 0 0 3px rgba(15, 17, 21, 0.06); }
 .jobline { flex: 1; }

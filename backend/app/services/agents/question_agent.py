@@ -81,11 +81,18 @@ class QuestionAgent(BaseAgent):
         resume_part = ""
         if resume_analysis:
             resume_part = (
-                "【候选人简历画像】\n"
+                "【候选人简历画像】（已上传简历：本场题目必须强绑定以下画像出题，"
+                "不要出与简历无关的通用题）\n"
                 f"技能栈：{', '.join(resume_analysis.get('skills') or [])}\n"
-                f"项目经历：{_format_projects(resume_analysis.get('projects') or [])}\n"
+                f"项目经历：\n{_format_projects(resume_analysis.get('projects') or [])}\n"
                 f"亮点：{'; '.join(resume_analysis.get('highlights') or [])}\n"
                 f"教育：{resume_analysis.get('education') or '未提供'}\n"
+                "\n【出题绑定要求】\n"
+                "- opening：请候选人结合简历介绍自己（技能栈 + 代表性项目），并在参考要点里标注接下来要追问的点\n"
+                "- basic：优先从简历技能栈与目标岗位的交集出题，落到他写过的技术\n"
+                "- deep / stress：必须挑简历里列出的真实项目（可直接点名项目名），就项目中描述的难点、"
+                "技术选型与取舍、量化结果、我的具体职责提问；至少一半深度题要能引出简历中的某个项目细节\n"
+                "- 简历项目信息不足时，再退回到该岗位的通用深入题\n"
             )
 
         role_part = f"【面试官角色】{ROLE_NAMES.get(role, role)}"
@@ -132,9 +139,29 @@ class QuestionAgent(BaseAgent):
 
 
 def _format_projects(projects: list) -> str:
+    """把项目经历格式化成详细文本（兼容老结构只含 name/description）。"""
     if not projects:
         return "无"
     lines = []
     for p in projects:
-        lines.append(f"- {p.get('name')}：{p.get('description')}")
-    return "\n".join(lines)
+        if not isinstance(p, dict):
+            continue
+        name = str(p.get("name") or "未命名项目")
+        desc = str(p.get("description") or "").strip()
+        role = str(p.get("my_role") or p.get("role") or "").strip()
+        tech = p.get("tech_stack") or p.get("tech") or []
+        if isinstance(tech, str):
+            tech = [tech]
+        tech_text = "、".join(str(t) for t in tech if str(t).strip())
+        result = str(p.get("result") or p.get("outcome") or "").strip()
+        parts = [f"- {name}"]
+        if desc:
+            parts.append(f"项目：{desc[:160]}")
+        if role:
+            parts.append(f"我的职责：{role[:160]}")
+        if tech_text:
+            parts.append(f"技术栈：{tech_text[:160]}")
+        if result:
+            parts.append(f"成果：{result[:160]}")
+        lines.append("；".join(parts))
+    return "\n".join(lines) if lines else "无"

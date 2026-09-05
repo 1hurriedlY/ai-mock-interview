@@ -30,7 +30,7 @@ _SCORING_SYSTEM_PROMPT = """你是资深面试官与职业评估专家。请基�
 要求：
 1. 评分要基于面试记录中的实际表现，不要空泛，避免一律给高分；明显不足要体现在分数里
 2. summary 是 2-3 句总体评语，语气专业中肯
-3. match_analysis 给出匹配度等级（高/中/低）与理由，strengths/gaps 各列出 2-4 条具体点
+3. match_analysis 给出匹配度等级（高/中/低）与理由；其中 strengths 是候选人整场面试做得好的「优点」，gaps 是「不足/薄弱点」，各 2-4 条，均须结合具体回答实例（可引用对话原话），报告会以「面试优点与不足」单独展示
 4. suggestions 给出 3-5 条可执行的改进建议（具体到"怎么做"）
 5. 若提供了表情时间轴，结合表情数据点评候选人的情绪状态、应变与抗压表现（expression_analysis.comment）
 6. 只输出 JSON，不要任何额外文字
@@ -99,6 +99,186 @@ class ScoringAgent(BaseAgent):
 
         result = self.chat_json(prompt, temperature=0.4)
         return self._normalize(result, expression_seq)
+
+    # 逐题参考答案的生成独立成一次调用：与主评分解耦，失败不影响报告主体。
+    _QA_PROMPT = """你在模拟一场真实的模拟面试复盘。下面会给你几道「面试官问题 + 候选人当时的回答」。
+
+请对每一题，只写一段「候选人现在可以照着说出口的完整回答」，语气要像真人聊天那样自然：
+- 开头可以用类似："我当时主要做了……""这个问题我是这么拆的：""说起来印象最深的是……"这类口语开场，正文第一人称
+- 内容具体：有清晰脉络和真实感细节（数字、方案名、取舍理由、踩过的坑、怎么验证）
+- 如果候选人当时的回答有漏洞或没说透，范例回答要把那部分补完整、示范更好的答法
+- 绝对禁止：评价候选人（如"暴露不足""缺乏""未作答导致……"）、给建议、写考察点、写评分，只允许写"作答内容本身"
+
+示例（参考风格，不要照抄内容）：
+「这块我当时是这么处理的。系统改造前，每次对账要跑两个多小时，我先用日志把耗时分布拉出来，发现大头在对账单和流水表的 N+1 查询上。后来我把它改成按商户 ID 分批 + 双游标对齐，再配合幂等表去重，跑批就压到了 15 分钟左右；另外还加了失败重试和人工补偿入口，保证对不上账时有地方兜底。」
+
+规则：
+1. 只输出 JSON。强烈推荐数组：[{"index": 题目序号, "model_answer": "完整作答"}]，序号从 1 开始、连续编号
+2. model_answer 用中文、口语自然、可直接照着说，篇幅 120~250 字
+3. 题目有几道就输出几条，不要合并、不要漏题
+4. 某题候选人没回答时，同样给出该题该怎么答的完整范例"""
+
+    def generate_model_answers(
+        self,
+        qa_pairs: list[dict],
+        *,
+        job_title: str,
+        role: str,
+    ) -> list[dict]:
+        """对逐题记录生成 AI 参考答案。
+
+        qa_pairs: [{"question": ..., "answer": ...}, ...]
+        返回: [{"question", "answer", "model_answer"}, ...]（与输入一一对应）。
+
+        长对话会拆成小批（每批最多 4 题）调用，降低超长输出漏题/截断的概率。
+        """
+        if not qa_pairs:
+            return []
+        n = len(qa_pairs)
+        CHUNK = 4
+        answers: list[str] = [""] * n
+
+        logger = __import__("logging").getLogger(__name__)
+        for start in range(0, n, CHUNK):
+            sub = qa_pairs[start:start + CHUNK]
+            lines = []
+            for i, qa in enumerate(sub, start=1):
+                answer = str(qa.get("answer") or "").strip()
+                lines.append(
+                    f"第 {i} 题\n问题：{str(qa.get('question') or '')[:900]}\n"
+                    f"候选人当时的回答：{answer[:900] if answer else '（未回答）'}"
+                )
+            user_message = (
+                f"【目标岗位】{job_title}\n【面试官角色】{role}\n\n"
+                + "\n\n".join(lines)
+                + "\n\n请输出这一批每一题的范例回答 JSON。"
+            )
+            try:
+                result = self.chat_json(
+                    user_message, system=self._QA_PROMPT, temperature=0.35
+                )
+            except Exception:
+                logger.exception("逐题参考答案批次生成失败（第 %d 批），该批回退为空", start // CHUNK + 1)
+                continue
+            merged = self._normalize_qa(result, sub)
+            for offset, item in enumerate(merged):
+                idx = start + offset
+                if idx < n and str(item.get("model_answer") or "").strip():
+                    answers[idx] = item["model_answer"]
+
+        return [
+            {
+                "question": str(qa.get("question") or ""),
+                "answer": str(qa.get("answer") or ""),
+                "model_answer": answers[i],
+            }
+            for i, qa in enumerate(qa_pairs)
+        ]
+
+    @classmethod
+    def _normalize_qa(cls, result, qa_pairs: list[dict]) -> list[dict]:
+        """把模型输出的逐题参考答案规范化并按题目顺序对齐。
+
+        兼容常见返回形态：
+        - 数组 [{"index":1,"model_answer":"…"}]（或带序号键的字典元素、纯文本串）
+        - 包一层：{"answers/qna/items/data": [...]}
+        - 数字键对象 {"1": "…"}
+        - 嵌套对象 {"question_1": {"reference_answer": "…"}, ...} / {"q1": "…"}
+        """
+        import re
+
+        def _text_of(value) -> str:
+            """从字符串或含答案字段的对象里取出文本。"""
+            if isinstance(value, str):
+                return value.strip()
+            if isinstance(value, dict):
+                for key in (
+                    "model_answer", "reference_answer", "参考答案", "answer",
+                    "reference", "content", "text",
+                ):
+                    val = value.get(key)
+                    if isinstance(val, str) and val.strip():
+                        return val.strip()
+            return ""
+
+        def _idx_of_key(key: str) -> int | None:
+            m = re.search(r"(\d+)\s*$", str(key))
+            return int(m.group(1)) if m else None
+
+        raw = result if isinstance(result, list) else None
+        if raw is None and isinstance(result, dict):
+            for key in ("answers", "qna", "items", "data", "list"):
+                if isinstance(result.get(key), list):
+                    raw = result[key]
+                    break
+
+        if raw is None and isinstance(result, dict):
+            # 数字键 / question_N / qN 等对象形态
+            mapping: dict[int, str] = {}
+            sequential: list[str] = []
+            for k, v in result.items():
+                text = _text_of(v)
+                if not text:
+                    continue
+                idx = _idx_of_key(k)
+                if idx is not None:
+                    mapping.setdefault(idx, text)
+                else:
+                    sequential.append(text)
+            if mapping:
+                next_idx = (max(mapping) + 1) if mapping else 1
+                for text in sequential:
+                    mapping.setdefault(next_idx, text)
+                    next_idx += 1
+                raw = [{"index": i, "model_answer": mapping[i]} for i in sorted(mapping)]
+            elif sequential:
+                raw = [{"index": i, "model_answer": t} for i, t in enumerate(sequential, start=1)]
+            else:
+                raw = []
+        if not isinstance(raw, list):
+            raw = []
+
+        answers: dict[int, str] = {}
+        plain_texts: list[str] = []
+        for item in raw:
+            if isinstance(item, str):
+                text = item.strip()
+                if text:
+                    plain_texts.append(text)
+                continue
+            if not isinstance(item, dict):
+                continue
+            text = _text_of(item)
+            idx = None
+            for key in ("index", "idx", "id", "no", "序号", "题号"):
+                val = item.get(key)
+                if isinstance(val, (int, str)):
+                    try:
+                        idx = int(val)
+                    except (TypeError, ValueError):
+                        idx = None
+                    if idx is not None:
+                        break
+            if text:
+                if idx is not None:
+                    answers.setdefault(idx, text)
+                else:
+                    plain_texts.append(text)
+
+        # 纯文本/无序号文本：按出现顺序兜底对齐
+        for i, text in enumerate(plain_texts, start=1):
+            answers.setdefault(i, text)
+
+        out = []
+        for i, qa in enumerate(qa_pairs, start=1):
+            out.append(
+                {
+                    "question": str(qa.get("question") or ""),
+                    "answer": str(qa.get("answer") or ""),
+                    "model_answer": answers.get(i, ""),
+                }
+            )
+        return out
 
     @classmethod
     def _normalize(cls, result: dict, expression_seq: list[dict] | None) -> dict:

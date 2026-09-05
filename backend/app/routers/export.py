@@ -9,11 +9,12 @@ import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import FileResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models import InterviewReport, InterviewSession, User
+from ..models import ChatMessage, InterviewReport, InterviewSession, User
 from ..services import export_service
 from ..services.membership_service import consume_free, ensure_allowed
 
@@ -23,6 +24,23 @@ router = APIRouter()
 
 # 支持的导出格式
 VALID_FORMATS = {"docx", "pdf"}
+
+
+def _session_messages(db: Session, session_id: int) -> list[dict]:
+    """取会话完整消息（含 reference），供导出文档渲染「逐题复盘」。"""
+    rows = db.scalars(
+        select(ChatMessage)
+        .where(ChatMessage.session_id == session_id)
+        .order_by(ChatMessage.id.asc())
+    ).all()
+    return [
+        {
+            "role": row.role,
+            "content": row.content,
+            "reference": row.reference,
+        }
+        for row in rows
+    ]
 
 
 def _report_or_404(
@@ -63,7 +81,7 @@ def export_report(
         raise HTTPException(status_code=402, detail=str(exc))
 
     try:
-        info = export_service.write_export(report, session, fmt)
+        info = export_service.write_export(report, session, fmt, _session_messages(db, session.id))
     except Exception as exc:
         logger.exception("导出失败：report_id=%s format=%s", report_id, fmt)
         raise HTTPException(status_code=500, detail=f"导出失败：{exc}")
@@ -100,7 +118,7 @@ def file_report(
         except PermissionError as exc:
             raise HTTPException(status_code=402, detail=str(exc))
         try:
-            export_service.write_export(report, session, fmt)
+            export_service.write_export(report, session, fmt, _session_messages(db, session.id))
         except Exception as exc:
             logger.exception("生成下载文件失败：%s", exc)
             raise HTTPException(status_code=500, detail=f"生成下载文件失败：{exc}")
@@ -133,7 +151,7 @@ def download_report(
     if not path.exists():
         # 文件被清理过则重新生成
         try:
-            export_service.write_export(report, session, fmt)
+            export_service.write_export(report, session, fmt, _session_messages(db, session.id))
         except Exception as exc:
             logger.exception("生成下载文件失败：%s", exc)
             raise HTTPException(status_code=500, detail=f"生成下载文件失败：{exc}")

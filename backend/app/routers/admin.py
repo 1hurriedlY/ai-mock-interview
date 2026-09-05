@@ -406,6 +406,7 @@ def _report_full(report: InterviewReport | None) -> dict | None:
         "match_analysis": _load(report.match_analysis, {}),
         "suggestions": _load(report.suggestions, []),
         "expression_analysis": _load(report.expression_analysis, {}),
+        "qna": _load(report.qna, []),
         "created_at": _fmt(report.created_at),
     }
 

@@ -41,6 +41,7 @@ def init_db() -> None:
     _migrate_users_is_admin()
     _migrate_session_fields()
     _migrate_member_fields()
+    _migrate_report_qna()
     _seed_admin()
 
 
@@ -64,6 +65,19 @@ def _migrate_member_fields() -> None:
     with engine.begin() as conn:
         for ddl in plan:
             conn.execute(text(f"ALTER TABLE users ADD COLUMN {ddl}"))
+
+
+def _migrate_report_qna() -> None:
+    """增量迁移：interview_reports 表补 qna 列（AI 生成的逐题参考答案）。"""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    if "interview_reports" not in insp.get_table_names():
+        return
+    columns = {c["name"] for c in insp.get_columns("interview_reports")}
+    if "qna" not in columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE interview_reports ADD COLUMN qna TEXT NULL"))
 
 
 def _migrate_session_fields() -> None:

@@ -53,6 +53,22 @@ def generate_and_store_report(
         logger.exception("评分 Agent 调用失败，使用兜底报告")
         report_data = _fallback_report(exc)
 
+    # 逐题复盘：AI 重新生成每道题的参考答案（独立调用，失败回退空 → 前端用面试时参考要点兜底）
+    qa_pairs = _build_qa_pairs(conversation)
+    if qa_pairs:
+        qa_agent = ScoringAgent()
+        qa_agent.MAX_OUTPUT_TOKENS = 8192  # 逐题长答案，放宽输出上限防长对话截断
+        qna = qa_agent.generate_model_answers(
+            qa_pairs, job_title=job_title, role=role
+        )
+        # 去掉没有生成出参考答案的题目（宁缺勿错，避免空内容入库）
+        report_data["qna"] = [
+            item for item in qna
+            if str(item.get("model_answer") or "").strip()
+        ]
+    else:
+        report_data["qna"] = []
+
     report = InterviewReport(
         session_id=session_id,
         summary=report_data.get("summary") or "",
@@ -63,6 +79,7 @@ def generate_and_store_report(
         expression_analysis=json.dumps(
             report_data.get("expression_analysis") or {}, ensure_ascii=False
         ),
+        qna=json.dumps(report_data.get("qna") or [], ensure_ascii=False),
     )
     db.add(report)
     db.commit()
@@ -84,4 +101,28 @@ def _fallback_report(exc: Exception) -> dict:
         },
         "suggestions": ["请确认 DASHSCOPE_API_KEY 配置正确后重新生成报告。"],
         "expression_analysis": {},
+        "qna": [],
     }
+
+
+def _build_qa_pairs(conversation: list[dict]) -> list[dict]:
+    """把线性对话整理成逐题结构：面试官问题 + 其后紧邻的候选人回答。
+
+    每一条 assistant 消息视为一题（开场/追问都算）；紧随其后的连续 user 消息
+    合并为该题的候选人回答。
+    """
+    pairs = []
+    for i, msg in enumerate(conversation):
+        if msg.get("role") != "assistant":
+            continue
+        question = str(msg.get("content") or "").strip()
+        if not question:
+            continue
+        answer_parts = []
+        for nxt in conversation[i + 1:]:
+            if nxt.get("role") == "user":
+                answer_parts.append(str(nxt.get("content") or ""))
+            else:
+                break
+        pairs.append({"question": question, "answer": "\n".join(answer_parts)})
+    return pairs

@@ -37,17 +37,23 @@ def export_path(report_id: int, fmt: str) -> Path:
     return config.EXPORT_DIR / f"report_{report_id}.{fmt.lower()}"
 
 
-def write_export(report: InterviewReport, session: InterviewSession, fmt: str) -> dict:
+def write_export(
+    report: InterviewReport,
+    session: InterviewSession,
+    fmt: str,
+    messages: list[dict] | None = None,
+) -> dict:
     """渲染报告为文件并落盘，返回下载元信息。
 
     fmt 仅支持 docx / pdf。文件重复导出会覆盖同名旧文件。
+    messages 为会话消息列表（含 reference），用于报告中的「逐题复盘」。
     """
     fmt = fmt.lower()
     if fmt not in ("docx", "pdf"):
         raise ValueError(f"不支持的导出格式：{fmt}")
 
     config.EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-    ctx = _build_context(report, session)
+    ctx = _build_context(report, session, messages)
     path = export_path(report.id, fmt)
 
     if fmt == "docx":
@@ -65,7 +71,11 @@ def write_export(report: InterviewReport, session: InterviewSession, fmt: str) -
 
 
 # ---------- 内容拼装 ----------
-def _build_context(report: InterviewReport, session: InterviewSession) -> dict:
+def _build_context(
+    report: InterviewReport,
+    session: InterviewSession,
+    messages: list[dict] | None = None,
+) -> dict:
     """把 ORM 报告（JSON 字符串字段）解析成渲染用的纯字典。"""
     dims = _load_json(report.dimensions, {})
     if not isinstance(dims, dict):
@@ -96,7 +106,58 @@ def _build_context(report: InterviewReport, session: InterviewSession) -> dict:
         "suggestions": list(suggestions),
         "expr_comment": str(expr.get("comment") or ""),
         "expr_highlights": list(expr.get("highlights") or []),
+        "qa_items": _qa_items_from_report(report, messages),
     }
+
+
+def _qa_items_from_report(
+    report: InterviewReport, messages: list[dict] | None
+) -> list[dict]:
+    """逐题复盘来源：优先报告里 AI 重新生成的参考答案(qna)；
+    老报告没有 qna 时回退用会话消息里的面试参考要点。"""
+    qna = _load_json(report.qna, [])
+    if isinstance(qna, list) and qna:
+        out = []
+        for item in qna:
+            question = str(item.get("question") or "").strip()
+            if not question:
+                continue
+            out.append({
+                "index": len(out) + 1,
+                "question": question,
+                "answer": str(item.get("answer") or ""),
+                "ref": str(item.get("model_answer") or ""),
+            })
+        return out
+    return _build_qa_items(messages)
+
+
+def _build_qa_items(messages: list[dict] | None) -> list[dict]:
+    """逐题复盘：面试官问题(含参考) + 紧随其后的用户回答，组成题目序列。"""
+    if not messages:
+        return []
+    items = []
+    for i, m in enumerate(messages):
+        if m.get("role") != "assistant" or not m.get("reference"):
+            continue
+        answer_parts = []
+        for nxt in messages[i + 1:]:
+            if nxt.get("role") == "user":
+                answer_parts.append(str(nxt.get("content") or ""))
+            else:
+                break
+        items.append({
+            "index": len(items) + 1,
+            "question": str(m.get("content") or ""),
+            "answer": "\n".join(answer_parts),
+            "ref": str(m.get("reference") or ""),
+        })
+    return items
+
+
+def _flat(text: str) -> str:
+    """把文本里的换行压平成单行（docx/reportlab 段落不易渲染换行）。"""
+    return " / ".join(line.strip() for line in str(text or "").splitlines() if line.strip())
 
 
 def _load_json(raw: str | None, default):
@@ -142,31 +203,47 @@ def _render_docx(ctx: dict, path: Path) -> None:
     dim_lines = [f"{name}：{val} 分" for name, val in ctx["dimensions"].items()]
     _doc_section(doc, "二、五维能力评分", dim_lines)
 
-    # 岗位匹配分析：等级 + 理由 + 亮点 / 待加强
+    # 岗位匹配分析：等级 + 理由
     doc.add_heading("三、岗位匹配分析", level=1)
     doc.add_paragraph(f"匹配度：{ctx['match_level'] or '—'}")
     doc.add_paragraph(f"分析：{ctx['match_reason'] or '—'}")
+
+    # 面试优点与不足
+    doc.add_heading("四、面试优点与不足", level=1)
     if ctx["strengths"]:
-        doc.add_paragraph("候选人亮点：")
+        doc.add_paragraph("优点：")
         for item in ctx["strengths"]:
             doc.add_paragraph(f"· {item}", style="List Bullet")
+    else:
+        doc.add_paragraph("优点：本次面试未识别到明显突出点。")
     if ctx["gaps"]:
-        doc.add_paragraph("待加强：")
+        doc.add_paragraph("不足：")
         for item in ctx["gaps"]:
             doc.add_paragraph(f"· {item}", style="List Bullet")
+    else:
+        doc.add_paragraph("不足：本次面试暂未发现明显不足。")
 
     if ctx["suggestions"]:
-        doc.add_heading("四、改进建议", level=1)
+        doc.add_heading("五、改进建议", level=1)
         for item in ctx["suggestions"]:
             doc.add_paragraph(f"· {item}", style="List Bullet")
 
     # 表情表现分析（有表情数据才输出）
     if ctx["expr_comment"] or ctx["expr_highlights"]:
-        doc.add_heading("五、表情表现分析", level=1)
+        doc.add_heading("六、表情表现分析", level=1)
         doc.add_paragraph(ctx["expr_comment"] or "—")
         if ctx["expr_highlights"]:
             for item in ctx["expr_highlights"]:
                 doc.add_paragraph(f"· {item}", style="List Bullet")
+
+    # 逐题复盘（问题 / 你的回答 / 参考答案）
+    if ctx["qa_items"]:
+        doc.add_heading("七、面试逐题复盘", level=1)
+        for qa in ctx["qa_items"]:
+            doc.add_paragraph(f"第 {qa['index']} 题　面试官提问：{_flat(qa['question'])}")
+            doc.add_paragraph(f"你的回答：{_flat(qa['answer']) if qa['answer'] else '本题未作答'}")
+            doc.add_paragraph(f"参考答案：{_flat(qa['ref'])}")
+            doc.add_paragraph("")
 
     doc.add_paragraph("")
     note = doc.add_paragraph("本报告由「模拟面试 AI 助手」自动生成，供自我复盘参考。")
@@ -247,26 +324,47 @@ def _render_pdf(ctx: dict, path: Path) -> None:
     story.append(p("三、岗位匹配分析", st_h))
     story.append(p(f"匹配度：{_clean(ctx['match_level'] or '—')}", st_body))
     story.append(p(f"分析:{_clean(ctx['match_reason'] or '—')}", st_body))
+
+    # 面试优点与不足
+    story.append(p("四、面试优点与不足", st_h))
     if ctx["strengths"]:
-        story.append(p("候选人亮点：", st_body))
+        story.append(p("优点：", st_body))
         for item in ctx["strengths"]:
             story.append(bullet(item))
+    else:
+        story.append(p("优点：本次面试未识别到明显突出点。", st_body))
     if ctx["gaps"]:
-        story.append(p("待加强：", st_body))
+        story.append(p("不足：", st_body))
         for item in ctx["gaps"]:
             story.append(bullet(item))
+    else:
+        story.append(p("不足：本次面试暂未发现明显不足。", st_body))
 
     if ctx["suggestions"]:
-        story.append(p("四、改进建议", st_h))
+        story.append(p("五、改进建议", st_h))
         for item in ctx["suggestions"]:
             story.append(bullet(item))
 
     if ctx["expr_comment"] or ctx["expr_highlights"]:
-        story.append(p("五、表情表现分析", st_h))
+        story.append(p("六、表情表现分析", st_h))
         story.append(p(_clean(ctx["expr_comment"] or "—"), st_body))
         if ctx["expr_highlights"]:
             for item in ctx["expr_highlights"]:
                 story.append(bullet(item))
+
+    # 逐题复盘（问题 / 你的回答 / 参考答案）
+    if ctx["qa_items"]:
+        story.append(p("七、面试逐题复盘", st_h))
+        for qa in ctx["qa_items"]:
+            story.append(p(f"第 {qa['index']} 题　面试官提问：{_flat(qa['question'])}", st_body))
+            story.append(
+                p(
+                    f"你的回答：{_flat(qa['answer']) if qa['answer'] else '本题未作答'}",
+                    st_body,
+                )
+            )
+            story.append(p(f"参考答案：{_flat(qa['ref'])}", st_body))
+            story.append(Spacer(1, 6))
 
     story.append(Spacer(1, 16))
     story.append(p("本报告由「模拟面试 AI 助手」自动生成，供自我复盘参考。", st_note))

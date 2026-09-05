@@ -45,14 +45,25 @@
       <section class="card" v-if="report.match_analysis && report.match_analysis.reason">
         <h2>岗位匹配度：<span class="level">{{ report.match_analysis.match_level || '—' }}</span></h2>
         <p class="reason">{{ report.match_analysis.reason }}</p>
-        <div v-if="report.match_analysis.strengths?.length" class="two-col">
+      </section>
+
+      <!-- 面试优点与不足 -->
+      <section class="card" v-if="hasProsCons">
+        <h2>面试优点与不足</h2>
+        <div class="two-col">
           <div>
-            <h3 class="good">✓ 候选人亮点</h3>
-            <ul><li v-for="(s, i) in report.match_analysis.strengths" :key="i">{{ s }}</li></ul>
+            <h3 class="good">✓ 优点</h3>
+            <ul v-if="report.match_analysis?.strengths?.length">
+              <li v-for="(s, i) in report.match_analysis.strengths" :key="i">{{ s }}</li>
+            </ul>
+            <p v-else class="reason">本次面试未识别到明显突出点。</p>
           </div>
           <div>
-            <h3 class="warn">△ 待加强</h3>
-            <ul><li v-for="(g, i) in report.match_analysis.gaps" :key="i">{{ g }}</li></ul>
+            <h3 class="warn">△ 不足</h3>
+            <ul v-if="report.match_analysis?.gaps?.length">
+              <li v-for="(g, i) in report.match_analysis.gaps" :key="i">{{ g }}</li>
+            </ul>
+            <p v-else class="reason">本次面试暂未发现明显不足。</p>
           </div>
         </div>
       </section>
@@ -77,16 +88,18 @@
         </ul>
       </section>
 
-      <!-- 参考要点（可折叠） -->
-      <section class="card" v-if="referenceMsgs.length">
+      <!-- 面试逐题复盘（可折叠） -->
+      <section class="card" v-if="referenceItems.length">
         <h2 class="clickable" @click="showRef = !showRef">
-          面试参考要点（{{ referenceMsgs.length }} 题）
+          面试逐题复盘（{{ referenceItems.length }} 题）
           <span class="fold">{{ showRef ? '收起 ▲' : '展开 ▼' }}</span>
         </h2>
         <div v-if="showRef">
-          <div v-for="m in referenceMsgs" :key="m.index" class="ref-item">
-            <p class="q">{{ m.q }}</p>
-            <pre class="ref-text">{{ m.ref }}</pre>
+          <div v-for="it in referenceItems" :key="it.index" class="qa-item">
+            <p class="q"><b>面试官提问</b>：{{ it.question }}</p>
+            <p v-if="it.answer" class="ans"><b>你的回答</b>：{{ it.answer }}</p>
+            <p v-else class="ans skip"><b>你的回答</b>：本题未作答</p>
+            <div class="ref-box"><span class="tag">参考答案</span>{{ it.ref || '本题参考答案生成失败，可重新生成报告' }}</div>
           </div>
         </div>
       </section>
@@ -108,10 +121,16 @@ const error = ref('')
 const isGenerating = ref(false)
 const showRef = ref(false)
 const exportMsg = ref('')
-const references = ref([])
+const rawMessages = ref([])
 const jobTitle = ref('')
 
 const hasDim = computed(() => Object.keys(report.value?.dimensions || {}).length > 0)
+const hasProsCons = computed(
+  () => Boolean(
+    report.value?.match_analysis?.strengths?.length
+    || report.value?.match_analysis?.gaps?.length
+  )
+)
 
 // 表情数据源：历史报告无表情时间轴时用空序列（不报错也不渲染空图）
 const exprData = computed(() => {
@@ -122,7 +141,42 @@ const exprData = computed(() => {
   return { has, sequence: seq }
 })
 
-const referenceMsgs = computed(() => references.value.filter((m) => m.q && m.ref))
+// 逐题复盘：优先使用报告里 AI 生成的参考答案(qna)；
+// 老报告没有 qna 时，回退用消息里的参考要点配对
+const referenceItems = computed(() => {
+  const qna = report.value?.qna
+  if (Array.isArray(qna) && qna.length) {
+    const items = []
+    for (const it of qna) {
+      if (!it.question) continue
+      items.push({
+        index: items.length + 1,
+        question: it.question,
+        answer: it.answer || '',
+        ref: it.model_answer || '',
+      })
+    }
+    return items
+  }
+  const arr = rawMessages.value
+  const items = []
+  for (let i = 0; i < arr.length; i++) {
+    const m = arr[i]
+    if (m.role !== 'assistant' || !m.reference) continue
+    const answerParts = []
+    for (let j = i + 1; j < arr.length; j++) {
+      if (arr[j].role === 'user') answerParts.push(arr[j].content)
+      else break // 下一条面试官消息 = 新的一题
+    }
+    items.push({
+      index: items.length + 1,
+      question: m.content,
+      answer: answerParts.join('\n'),
+      ref: m.reference,
+    })
+  }
+  return items
+})
 
 const reportTitle = computed(() => jobTitle.value || '面试评估报告')
 
@@ -137,9 +191,7 @@ onMounted(async () => {
   try {
     const detail = await historyApi.detail(route.params.id) // 通过 session_id 取详情
     jobTitle.value = detail.job_title || ''
-    references.value = detail.messages
-      .filter((m) => m.role === 'assistant' && m.reference)
-      .map((m) => ({ q: m.content.slice(0, 60), ref: m.reference }))
+    rawMessages.value = detail.messages || []
     report.value = detail.report
     if (report.value) return
     // 报告尚未生成：会话已结束 → 进入"生成中"并自动轮询，直到报告就绪
@@ -165,9 +217,7 @@ function pollReport() {
       const detail = await historyApi.detail(route.params.id)
       if (detail.report) {
         jobTitle.value = detail.job_title || ''
-        references.value = detail.messages
-          .filter((m) => m.role === 'assistant' && m.reference)
-          .map((m) => ({ q: m.content.slice(0, 60), ref: m.reference }))
+        rawMessages.value = detail.messages || []
         report.value = detail.report
         isGenerating.value = false
         return
@@ -364,20 +414,37 @@ h3.warn { color: var(--warning-text); }
   align-items: center;
 }
 .fold { font-size: 13px; color: var(--text-secondary); font-weight: 450; }
-.ref-item {
-  padding: 4px 2px 4px 14px;
+.qa-item {
+  padding: 14px 2px 16px 14px;
   border-left: 2px solid var(--border-soft);
-  margin-bottom: 14px;
+  margin-bottom: 4px;
 }
-.ref-item .q { font-weight: 600; margin-bottom: 6px; color: var(--ink); font-size: 14px; }
-.ref-text {
-  white-space: pre-wrap;
-  font-family: inherit;
+.qa-item p { margin: 0 0 8px; line-height: 1.8; font-size: 14px; color: var(--text); }
+.qa-item b { color: var(--ink); font-weight: 650; }
+.qa-item .ans.skip { color: var(--text-muted); }
+.qa-item .ans { white-space: pre-wrap; }
+.ref-box {
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  padding: 10px 14px;
   font-size: 13.5px;
+  line-height: 1.8;
   color: var(--text-secondary);
-  line-height: 1.75;
-  margin: 0;
+  white-space: pre-wrap;
 }
+.ref-box .tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--success-text);
+  background: var(--success-bg);
+  border-radius: 999px;
+  padding: 2px 10px;
+  margin-right: 8px;
+  vertical-align: 1px;
+}
+.ref-item { display: none; }
 @media (max-width: 640px) {
   .two-col { grid-template-columns: 1fr; }
   .score-card { flex-direction: column; align-items: flex-start; }

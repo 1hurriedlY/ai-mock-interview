@@ -125,6 +125,10 @@ class InterviewReport(Base):
     expression_analysis: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="表情时间轴 + 点评 JSON（视觉模块）"
     )
+    qna: Mapped[str | None] = mapped_column(
+        Text, nullable=True,
+        comment="逐题复盘 JSON：AI 生成的参考答案（question/answer/model_answer）",
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )
