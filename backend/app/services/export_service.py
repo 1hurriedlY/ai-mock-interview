@@ -127,9 +127,17 @@ def _qa_items_from_report(
                 "question": question,
                 "answer": str(item.get("answer") or ""),
                 "ref": str(item.get("model_answer") or ""),
+                "good": _as_str_list(item.get("good_points")),
+                "weak": _as_str_list(item.get("weak_points")),
             })
         return out
     return _build_qa_items(messages)
+
+
+def _as_str_list(value) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(x).strip() for x in value if str(x).strip()]
 
 
 def _build_qa_items(messages: list[dict] | None) -> list[dict]:
@@ -151,6 +159,8 @@ def _build_qa_items(messages: list[dict] | None) -> list[dict]:
             "question": str(m.get("content") or ""),
             "answer": "\n".join(answer_parts),
             "ref": str(m.get("reference") or ""),
+            "good": [],
+            "weak": [],
         })
     return items
 
@@ -243,6 +253,10 @@ def _render_docx(ctx: dict, path: Path) -> None:
             doc.add_paragraph(f"第 {qa['index']} 题　面试官提问：{_flat(qa['question'])}")
             doc.add_paragraph(f"你的回答：{_flat(qa['answer']) if qa['answer'] else '本题未作答'}")
             doc.add_paragraph(f"参考答案：{_flat(qa['ref'])}")
+            if qa.get("good"):
+                doc.add_paragraph(f"答得好的：{'；'.join(_flat(x) for x in qa['good'])}")
+            if qa.get("weak"):
+                doc.add_paragraph(f"欠缺/答得不好：{'；'.join(_flat(x) for x in qa['weak'])}")
             doc.add_paragraph("")
 
     doc.add_paragraph("")
@@ -364,6 +378,10 @@ def _render_pdf(ctx: dict, path: Path) -> None:
                 )
             )
             story.append(p(f"参考答案：{_flat(qa['ref'])}", st_body))
+            if qa.get("good"):
+                story.append(p(f"答得好的：{'；'.join(_flat(x) for x in qa['good'])}", st_body))
+            if qa.get("weak"):
+                story.append(p(f"欠缺/答得不好：{'；'.join(_flat(x) for x in qa['weak'])}", st_body))
             story.append(Spacer(1, 6))
 
     story.append(Spacer(1, 16))

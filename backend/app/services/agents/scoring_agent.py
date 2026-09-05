@@ -113,10 +113,16 @@ class ScoringAgent(BaseAgent):
 「这块我当时是这么处理的。系统改造前，每次对账要跑两个多小时，我先用日志把耗时分布拉出来，发现大头在对账单和流水表的 N+1 查询上。后来我把它改成按商户 ID 分批 + 双游标对齐，再配合幂等表去重，跑批就压到了 15 分钟左右；另外还加了失败重试和人工补偿入口，保证对不上账时有地方兜底。」
 
 规则：
-1. 只输出 JSON。强烈推荐数组：[{"index": 题目序号, "model_answer": "完整作答"}]，序号从 1 开始、连续编号
+1. 只输出 JSON。强烈推荐数组：
+   [{"index": 题目序号, "model_answer": "完整作答",
+     "good_points": ["答得好的具体点"], "weak_points": ["欠缺/答得不好的具体点"]}]，
+   序号从 1 开始、连续编号
 2. model_answer 用中文、口语自然、可直接照着说，篇幅 120~250 字
 3. 题目有几道就输出几条，不要合并、不要漏题
-4. 某题候选人没回答时，同样给出该题该怎么答的完整范例"""
+4. 某题候选人没回答时，同样给出该题该怎么答的完整范例
+5. 每题附简短点评（只针对这题作答本身，不写套话）：
+   good_points 1-2 条，指出答得好的具体点（可引用原话，如"用数字说明成果"）；
+   weak_points 1-2 条，指出答得不好/漏掉的关键点；未作答则该题 weak_points 写「本题未作答」"""
 
     def generate_model_answers(
         self,
@@ -137,6 +143,8 @@ class ScoringAgent(BaseAgent):
         n = len(qa_pairs)
         CHUNK = 4
         answers: list[str] = [""] * n
+        goods: list[list[str]] = [[] for _ in range(n)]
+        weaks: list[list[str]] = [[] for _ in range(n)]
 
         logger = __import__("logging").getLogger(__name__)
         for start in range(0, n, CHUNK):
@@ -163,14 +171,19 @@ class ScoringAgent(BaseAgent):
             merged = self._normalize_qa(result, sub)
             for offset, item in enumerate(merged):
                 idx = start + offset
-                if idx < n and str(item.get("model_answer") or "").strip():
-                    answers[idx] = item["model_answer"]
+                if idx >= n or not str(item.get("model_answer") or "").strip():
+                    continue
+                answers[idx] = item["model_answer"]
+                goods[idx] = list(item.get("good_points") or [])
+                weaks[idx] = list(item.get("weak_points") or [])
 
         return [
             {
                 "question": str(qa.get("question") or ""),
                 "answer": str(qa.get("answer") or ""),
                 "model_answer": answers[i],
+                "good_points": goods[i],
+                "weak_points": weaks[i],
             }
             for i, qa in enumerate(qa_pairs)
         ]
@@ -238,7 +251,21 @@ class ScoringAgent(BaseAgent):
         if not isinstance(raw, list):
             raw = []
 
+        def _crit_list(value, keys):
+            """从 dict 字段/字符串中取出点评条目列表。"""
+            if isinstance(value, str):
+                return [value.strip()] if value.strip() else []
+            if isinstance(value, list):
+                return [str(x).strip() for x in value if str(x).strip()]
+            if isinstance(value, dict):
+                for k in keys:
+                    if k in value:
+                        return _crit_list(value[k], ())
+            return []
+
         answers: dict[int, str] = {}
+        goods: dict[int, list[str]] = {}
+        weaks: dict[int, list[str]] = {}
         plain_texts: list[str] = []
         for item in raw:
             if isinstance(item, str):
@@ -259,9 +286,19 @@ class ScoringAgent(BaseAgent):
                         idx = None
                     if idx is not None:
                         break
+            good = _crit_list(
+                item.get("good_points", item), ("good_points", "goodPoints", "good", "优点", "答得好")
+            )
+            weak = _crit_list(
+                item.get("weak_points", item), ("weak_points", "weakPoints", "weak", "不足", "欠缺", "答得不好")
+            )
             if text:
                 if idx is not None:
                     answers.setdefault(idx, text)
+                    if good:
+                        goods.setdefault(idx, []).extend(good)
+                    if weak:
+                        weaks.setdefault(idx, []).extend(weak)
                 else:
                     plain_texts.append(text)
 
@@ -276,6 +313,8 @@ class ScoringAgent(BaseAgent):
                     "question": str(qa.get("question") or ""),
                     "answer": str(qa.get("answer") or ""),
                     "model_answer": answers.get(i, ""),
+                    "good_points": goods.get(i, []),
+                    "weak_points": weaks.get(i, []),
                 }
             )
         return out

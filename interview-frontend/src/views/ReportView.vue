@@ -94,12 +94,26 @@
           面试逐题复盘（{{ referenceItems.length }} 题）
           <span class="fold">{{ showRef ? '收起 ▲' : '展开 ▼' }}</span>
         </h2>
+        <p v-if="retrainErr" class="retrain-err">{{ retrainErr }}</p>
         <div v-if="showRef">
           <div v-for="it in referenceItems" :key="it.index" class="qa-item">
             <p class="q"><b>面试官提问</b>：{{ it.question }}</p>
             <p v-if="it.answer" class="ans"><b>你的回答</b>：{{ it.answer }}</p>
             <p v-else class="ans skip"><b>你的回答</b>：本题未作答</p>
             <div class="ref-box"><span class="tag">参考答案</span>{{ it.ref || '本题参考答案生成失败，可重新生成报告' }}</div>
+            <div v-if="it.good.length || it.weak.length" class="crit">
+              <p v-if="it.good.length" class="good"><b>✓ 答得好的地方</b>：{{ it.good.join('；') }}</p>
+              <p v-if="it.weak.length" class="warn"><b>△ 欠缺 / 答得不好</b>：{{ it.weak.join('；') }}</p>
+            </div>
+            <button
+              v-if="it.trainable"
+              type="button"
+              class="retrain-btn"
+              :disabled="retrainingKey === it.index"
+              @click="retrainOn(it)"
+            >
+              {{ retrainingKey === it.index ? '正在生成专项练习…' : '这道题没答好 · 再来一轮专项练习' }}
+            </button>
           </div>
         </div>
       </section>
@@ -110,7 +124,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { downloadReport, exportApi, historyApi } from '../api'
+import { downloadReport, exportApi, historyApi, interviewApi } from '../api'
 import ScoreRadar from '../components/ScoreRadar.vue'
 import ExpressionChart from '../components/ExpressionChart.vue'
 
@@ -143,10 +157,11 @@ const exprData = computed(() => {
 
 // 逐题复盘：优先使用报告里 AI 生成的参考答案(qna)；
 // 老报告没有 qna 时，回退用消息里的参考要点配对
+const strList = (v) => (Array.isArray(v) ? v.map(String).filter(Boolean) : [])
 const referenceItems = computed(() => {
   const qna = report.value?.qna
+  let items = []
   if (Array.isArray(qna) && qna.length) {
-    const items = []
     for (const it of qna) {
       if (!it.question) continue
       items.push({
@@ -154,29 +169,53 @@ const referenceItems = computed(() => {
         question: it.question,
         answer: it.answer || '',
         ref: it.model_answer || '',
+        good: strList(it.good_points),
+        weak: strList(it.weak_points),
       })
     }
-    return items
-  }
-  const arr = rawMessages.value
-  const items = []
-  for (let i = 0; i < arr.length; i++) {
-    const m = arr[i]
-    if (m.role !== 'assistant' || !m.reference) continue
-    const answerParts = []
-    for (let j = i + 1; j < arr.length; j++) {
-      if (arr[j].role === 'user') answerParts.push(arr[j].content)
-      else break // 下一条面试官消息 = 新的一题
+  } else {
+    const arr = rawMessages.value
+    for (let i = 0; i < arr.length; i++) {
+      const m = arr[i]
+      if (m.role !== 'assistant' || !m.reference) continue
+      const answerParts = []
+      for (let j = i + 1; j < arr.length; j++) {
+        if (arr[j].role === 'user') answerParts.push(arr[j].content)
+        else break // 下一条面试官消息 = 新的一题
+      }
+      items.push({
+        index: items.length + 1,
+        question: m.content,
+        answer: answerParts.join('\n'),
+        ref: m.reference,
+        good: [],
+        weak: [],
+      })
     }
-    items.push({
-      index: items.length + 1,
-      question: m.content,
-      answer: answerParts.join('\n'),
-      ref: m.reference,
-    })
   }
+  items = items.map((it) => ({
+    ...it,
+    // 允许发起专项复练：这题答得不好 / 有明确不足 / 直接没作答
+    trainable: !it.answer || it.weak.length > 0,
+  }))
   return items
 })
+
+// 薄弱题 → 再来一轮专项练习
+const retrainingKey = ref(0)
+const retrainErr = ref('')
+async function retrainOn(it) {
+  if (retrainingKey.value) return
+  retrainingKey.value = it.index
+  retrainErr.value = ''
+  try {
+    const data = await interviewApi.retrain(route.params.id, it.question)
+    router.push(`/interview/${data.session_id}`)
+  } catch (e) {
+    retrainErr.value = e.response?.data?.detail || '发起专项练习失败，请稍后重试'
+    retrainingKey.value = 0
+  }
+}
 
 const reportTitle = computed(() => jobTitle.value || '面试评估报告')
 
@@ -445,6 +484,26 @@ h3.warn { color: var(--warning-text); }
   vertical-align: 1px;
 }
 .ref-item { display: none; }
+.crit { margin: 10px 0 4px; padding: 10px 14px; background: var(--bg-soft); border-radius: 12px; font-size: 13.5px; line-height: 1.8; }
+.crit p { margin: 0 0 4px; }
+.crit p:last-child { margin-bottom: 0; }
+.crit .good { color: var(--success); }
+.crit .warn { color: #b45309; }
+.retrain-btn {
+  margin-top: 10px;
+  border: 1px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 7px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: var(--transition, all 0.2s);
+}
+.retrain-btn:hover:not(:disabled) { background: var(--ink); color: #fff; }
+.retrain-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.retrain-err { color: var(--danger); font-size: 13px; margin: 0 0 8px; }
 @media (max-width: 640px) {
   .two-col { grid-template-columns: 1fr; }
   .score-card { flex-direction: column; align-items: flex-start; }

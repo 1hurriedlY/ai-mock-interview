@@ -64,6 +64,13 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000, description="候选人本轮回答")
 
 
+class RetrainRequest(BaseModel):
+    source_session_id: int = Field(description="上一场报告来源会话（用于继承岗位/难度/学历等设置）")
+    focus_question: str = Field(
+        min_length=2, max_length=2000, description="报告里答得不理想的面试官原题"
+    )
+
+
 class EndRequest(BaseModel):
     expression_seq: list[dict] = Field(
         default_factory=list,
@@ -295,6 +302,102 @@ def start_interview(
         session_id=session.id,
         role=role,
         job_title=body.job_title,
+        opening=opening,
+        stage=config.STAGES[0],
+    )
+
+
+@router.post("/retrain")
+def retrain(
+    body: RetrainRequest,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StartResponse:
+    """针对报告里答得不好的题，开一场「同考点变体题」的专项复练。
+
+    复用源会话的岗位/面试官角色/难度/学历/简历文本；
+    题卡围绕薄弱原题的考点生成新的变体题。
+    """
+    src = _get_session_or_404(db, body.source_session_id)
+    if src.user_id != current.id:
+        raise HTTPException(status_code=403, detail="无权使用该会话发起复练")
+    focus = body.focus_question.strip()
+    if not focus:
+        raise HTTPException(status_code=400, detail="缺少薄弱题目内容")
+
+    # 会员/免费额度拦截（与正常开一场一致）
+    try:
+        ensure_allowed(current, "interview")
+    except PermissionError as exc:
+        raise HTTPException(status_code=402, detail=str(exc))
+
+    session = InterviewSession(
+        user_id=current.id,
+        job_title=src.job_title,
+        interviewer_role=src.interviewer_role,
+        difficulty=src.difficulty or "medium",
+        education=src.education or "any",
+        resume_text=src.resume_text or None,
+        status="in_progress",
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+
+    try:
+        card = QuestionAgent().generate_card(
+            job_title=src.job_title or "目标岗位",
+            role=src.interviewer_role or "technical",
+            resume_analysis=None,
+            difficulty=src.difficulty or "medium",
+            education=src.education or "any",
+            focus_question=focus,
+        )
+    except Exception as exc:
+        db.delete(session)
+        db.commit()
+        logger.exception("专项复练题卡生成失败")
+        raise HTTPException(status_code=502, detail=f"复练题卡生成失败：{exc}")
+    redis_client.set_question_card(session.id, card)
+
+    meta = {
+        "job_title": src.job_title or "",
+        "role": src.interviewer_role or "technical",
+        "difficulty": src.difficulty or "medium",
+        "education": src.education or "any",
+        "focus_question": focus,
+        "retrain_of": src.id,
+    }
+    if src.resume_text:
+        old_meta = redis_client.get_session_meta(src.id) or {}
+        if old_meta.get("resume_summary"):
+            meta["resume_summary"] = old_meta["resume_summary"]
+    redis_client.set_session_meta(session.id, meta)
+
+    # 开场白 = 说明本次是薄弱点专项复练 + 抛出首道变体题（即题卡 opening）
+    stages = (card or {}).get("stages", {})
+    opening_card = stages.get("opening")
+    if isinstance(opening_card, dict):
+        first_q = str(opening_card.get("question") or "")
+    elif isinstance(opening_card, list) and opening_card:
+        first_q = str(opening_card[0].get("question") or "")
+    else:
+        first_q = "请围绕你上轮没答好的这个问题，重新讲一遍你的完整思路。"
+    role_name = ROLE_NAMES.get(session.interviewer_role, session.interviewer_role or "面试")
+    opening = (
+        f"你好，我是{role_name}面试官（{src.job_title}）。"
+        "这轮是根据你上一场答得不理想的问题做的专项复练，会围绕同一考点出几道变体题。"
+        f"我们先从第一道开始：{first_q}"
+    )
+
+    db.add(ChatMessage(session_id=session.id, role="assistant", content=opening, reference=""))
+    consume_free(current, "interview")
+    db.commit()
+
+    return StartResponse(
+        session_id=session.id,
+        role=session.interviewer_role or "technical",
+        job_title=session.job_title or "",
         opening=opening,
         stage=config.STAGES[0],
     )

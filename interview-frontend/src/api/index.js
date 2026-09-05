@@ -57,6 +57,11 @@ export const interviewApi = {
       difficulty: level.difficulty || 'medium',
       education: level.education || 'any',
     }).then(r => r.data),
+  retrain: (sourceSessionId, focusQuestion) =>
+    http.post('/interview/retrain', {
+      source_session_id: sourceSessionId,
+      focus_question: focusQuestion,
+    }).then(r => r.data),
   end: (sessionId, expressionSeq = []) =>
     http.post(`/interview/${sessionId}/end`, { expression_seq: expressionSeq }).then(r => r.data),
 }

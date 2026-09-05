@@ -72,11 +72,13 @@ class QuestionAgent(BaseAgent):
         resume_analysis: dict | None = None,
         difficulty: str = "medium",
         education: str = "any",
+        focus_question: str | None = None,
     ) -> dict:
         """生成题卡。
 
         resume_analysis 为简历分析 Agent 的输出（可为 None，无简历时按岗位通用出题）。
         difficulty/education 决定出题深度与考察定位。
+        focus_question 不为空时：围绕该薄弱题的主题/考点出一套针对性复练题卡。
         """
         resume_part = ""
         if resume_analysis:
@@ -103,11 +105,22 @@ class QuestionAgent(BaseAgent):
             "出题与该学历定位匹配"
         )
 
+        focus_part = ""
+        if focus_question:
+            focus_part = (
+                "\n【专项复练目标】（本场是候选人某类题答得不好后的针对性再练）\n"
+                f"薄弱原题：{focus_question[:600]}\n"
+                "要求：整张题卡围绕上面这道题考察的考点/题型出新的变体题（3-4 道各不相同、由浅入深），"
+                "不要复用原题原句；opening 用于说明本场将针对该考点复练并抛出第一道变体题；"
+                "basic/deep/stress 各阶段都围绕该考点展开，让候选人把这类型答扎实。"
+            )
+
         prompt = (
             f"【目标岗位】{job_title}\n"
             f"{role_part}\n"
             f"{level_part}\n"
             f"{resume_part}"
+            f"{focus_part}"
             "\n请生成这套面试的完整题卡。"
         )
         card = self.chat_json(prompt, temperature=0.7)
