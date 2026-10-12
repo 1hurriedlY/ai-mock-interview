@@ -1,11 +1,15 @@
-"""Agent 基类：统一封装通义千问（DashScope OpenAI 兼容模式）的调用。
+"""Agent 基类：统一封装 OpenAI 兼容接口的大模型调用。
 
 所有 Agent 继承 BaseAgent：
 - chat_json：非流式，要求模型输出合法 JSON，解析后返回 dict
 - chat_stream：流式生成，逐段产出文本（供面试官对话 SSE 使用）
 - 失败时抛出 AgentError，由调用方决定降级策略
 
-使用 openai 3.x SDK，兼容 DashScope 兼容模式的 base_url 与 api_key。
+模型配置来源（按优先级）：
+1. 构造时传入的 ai_config —— 用户在设置页自定义的模型（本地部署 / 云端 API）
+2. .env 里的全局默认 —— DashScope 通义千问
+
+使用 openai 3.x SDK，兼容任意 OpenAI 兼容接口的 base_url 与 api_key。
 """
 import json
 import logging
@@ -28,30 +32,41 @@ class BaseAgent:
     # 子类覆盖：当前 Agent 的角色描述（系统提示词）
     system_prompt: str = "你是一个专业的面试辅助助手。"
 
-    def __init__(self) -> None:
-        self._client: OpenAI | None = None
-        if not config.DASHSCOPE_API_KEY:
-            logger.warning("DASHSCOPE_API_KEY 未配置，Agent 调用将失败")
-        else:
-            self._client = OpenAI(
-                api_key=config.DASHSCOPE_API_KEY,
-                base_url=config.DASHSCOPE_BASE_URL,
-                timeout=120,
-                max_retries=2,
-            )
-
     # 生成 token 上限：默认放宽到 4096，保证行业报告/题卡/评分报告等长 JSON 不被截断；
     # 短回复场景（如面试官对话）由子类覆盖为更小值以提速。
     MAX_OUTPUT_TOKENS = 4096
+
+    def __init__(self, ai_config: dict | None = None) -> None:
+        """ai_config 为 None 时使用 .env 里的全局默认配置。
+
+        ai_config 结构：{"base_url": str, "api_key": str, "model": str}
+        （由 services/ai_config_service.resolve_config 产出）
+        """
+        cfg = ai_config or {}
+        self._model = (cfg.get("model") or config.DASHSCOPE_MODEL).strip()
+        self._api_key = (cfg.get("api_key") or config.DASHSCOPE_API_KEY or "").strip()
+        self._base_url = (cfg.get("base_url") or config.DASHSCOPE_BASE_URL).strip()
+
+        self._client: OpenAI | None = None
+        if not self._base_url:
+            logger.warning("未配置大模型接口地址，Agent 调用将失败")
+        else:
+            self._client = OpenAI(
+                # 本地部署通常不校验 key，但 SDK 要求非空，占位即可
+                api_key=self._api_key or "not-needed",
+                base_url=self._base_url,
+                timeout=120,
+                max_retries=2,
+            )
 
     # ---------- 基础调用 ----------
     def _chat(self, messages: list[dict], *, temperature: float = 0.7,
               json_mode: bool = False) -> str:
         """非流式调用，返回文本；json_mode=True 时要求 JSON 输出。"""
         if self._client is None:
-            raise AgentError("未配置 DASHSCOPE_API_KEY，无法调用大模型")
+            raise AgentError("未配置大模型接口，无法调用（请在设置页配置模型）")
         kwargs: dict[str, Any] = {
-            "model": config.DASHSCOPE_MODEL,
+            "model": self._model,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": self.MAX_OUTPUT_TOKENS,
@@ -62,16 +77,26 @@ class BaseAgent:
             resp = self._client.chat.completions.create(**kwargs)
             return resp.choices[0].message.content or ""
         except Exception as exc:
-            logger.error("DashScope 调用失败：%s", exc)
+            # 部分本地模型（Ollama 等）不支持 response_format，去掉后重试一次，
+            # 交给 parse_json_object 做容错解析
+            if json_mode:
+                kwargs.pop("response_format", None)
+                try:
+                    resp = self._client.chat.completions.create(**kwargs)
+                    return resp.choices[0].message.content or ""
+                except Exception as retry_exc:
+                    logger.error("大模型调用失败：%s", retry_exc)
+                    raise AgentError(str(retry_exc)) from retry_exc
+            logger.error("大模型调用失败：%s", exc)
             raise AgentError(str(exc)) from exc
 
     def _chat_stream(self, messages: list[dict], *, temperature: float = 0.7) -> Iterator[str]:
         """流式调用，逐段 yield 文本。"""
         if self._client is None:
-            raise AgentError("未配置 DASHSCOPE_API_KEY，无法调用大模型")
+            raise AgentError("未配置大模型接口，无法调用（请在设置页配置模型）")
         try:
             stream = self._client.chat.completions.create(
-                model=config.DASHSCOPE_MODEL,
+                model=self._model,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=self.MAX_OUTPUT_TOKENS,
@@ -82,7 +107,7 @@ class BaseAgent:
                 if delta:
                     yield delta
         except Exception as exc:
-            logger.error("DashScope 流式调用失败：%s", exc)
+            logger.error("大模型流式调用失败：%s", exc)
             raise AgentError(str(exc)) from exc
 
     # ---------- 对外方法 ----------

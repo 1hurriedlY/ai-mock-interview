@@ -199,6 +199,126 @@
       <p v-else class="empty">暂无兑换码，点右上「生成兑换码」发放</p>
     </section>
 
+    <!-- 题库管理 -->
+    <section v-if="tab === 'questions'" class="panel card">
+      <div class="bar">
+        <h2>题库 <span class="cnt">{{ filteredQuestions.length }}</span></h2>
+        <div class="filters">
+          <select v-model="qbStage" class="search">
+            <option value="">全部阶段</option>
+            <option value="opening">开场</option><option value="basic">基础</option>
+            <option value="deep">深度</option><option value="stress">压力</option>
+            <option value="closing">收尾</option>
+          </select>
+          <select v-model="qbRole" class="search">
+            <option value="">全部角色</option>
+            <option value="technical">技术面</option><option value="HR">HR 面</option>
+            <option value="stress">压力面</option>
+          </select>
+          <select v-model="qbDiff" class="search">
+            <option value="">全部难度</option>
+            <option value="easy">简单</option><option value="medium">中等</option><option value="hard">困难</option>
+          </select>
+          <select v-model="qbStatus" class="search">
+            <option value="">全部状态</option>
+            <option value="approved">已启用</option><option value="draft">待审核</option>
+            <option value="disabled">已下架</option>
+          </select>
+          <input v-model.trim="qKeyword" class="search" placeholder="搜索题目 / 岗位标签" />
+          <button class="ghost" @click="openCreate">＋ 新增题目</button>
+        </div>
+      </div>
+
+      <!-- AI 批量出题 -->
+      <div class="qgen">
+        <input v-model.trim="genForm.job_title" class="search" placeholder="目标岗位，如 Python 后端" />
+        <select v-model="genForm.role" class="search">
+          <option value="technical">技术面</option><option value="HR">HR 面</option><option value="stress">压力面</option>
+        </select>
+        <select v-model="genForm.difficulty" class="search">
+          <option value="easy">简单</option><option value="medium">中等</option><option value="hard">困难</option>
+        </select>
+        <input v-model.number="genForm.count" type="number" min="1" max="10" class="search narrow" />
+        <button class="ghost" :disabled="genBusy" @click="runGenerate">{{ genBusy ? 'AI 出题中…' : 'AI 批量出题' }}</button>
+        <span v-if="genMsg" class="muted">{{ genMsg }}</span>
+      </div>
+
+      <table v-if="filteredQuestions.length" class="tbl">
+        <thead><tr>
+          <th>ID</th><th>阶段</th><th>角色</th><th>难度</th><th>题目</th>
+          <th>状态</th><th>来源</th><th>用过</th><th>操作</th>
+        </tr></thead>
+        <tbody>
+          <tr v-for="q in filteredQuestions" :key="q.id">
+            <td>{{ q.id }}</td>
+            <td class="muted">{{ stageName(q.stage) }}</td>
+            <td class="muted">{{ roleName(q.role) }}</td>
+            <td class="muted">{{ diffName(q.difficulty) }}</td>
+            <td class="preview">{{ q.question }}</td>
+            <td><span class="tag" :class="q.status === 'approved' ? 'tag-done' : (q.status === 'draft' ? 'tag-warn' : 'tag-user')">
+              {{ q.status === 'approved' ? '已启用' : q.status === 'draft' ? '待审核' : '已下架' }}</span></td>
+            <td class="muted">{{ q.source === 'ai_generated' ? 'AI' : '手动' }}</td>
+            <td>{{ q.used_count }}</td>
+            <td class="ops">
+              <button v-if="q.status !== 'approved'" class="btn-view" @click="setQStatus(q, 'approved')">启用</button>
+              <button v-if="q.status === 'approved'" class="btn-view" @click="setQStatus(q, 'disabled')">下架</button>
+              <button class="btn-view" @click="openEdit(q)">编辑</button>
+              <button class="btn-del" :disabled="deleting === 'q' + q.id" @click="removeQuestion(q)">{{ deleting === 'q' + q.id ? '…' : '删除' }}</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-else class="empty">题库还是空的——用上面的「AI 批量出题」先灌一批，或点「新增题目」手写</p>
+    </section>
+
+    <!-- 题目编辑弹窗 -->
+    <div v-if="editOpen" class="overlay" @click.self="editOpen = false">
+      <div class="modal card">
+        <div class="modal-head">
+          <h2>{{ editForm.id ? '编辑题目 #' + editForm.id : '新增题目' }}</h2>
+          <button class="ghost" @click="editOpen = false">关闭</button>
+        </div>
+        <p v-if="editErr" class="error">{{ editErr }}</p>
+        <div class="edit-grid">
+          <label>阶段
+            <select v-model="editForm.stage">
+              <option value="opening">开场</option><option value="basic">基础</option>
+              <option value="deep">深度</option><option value="stress">压力</option>
+              <option value="closing">收尾</option>
+            </select>
+          </label>
+          <label>角色
+            <select v-model="editForm.role">
+              <option value="technical">技术面</option><option value="HR">HR 面</option><option value="stress">压力面</option>
+            </select>
+          </label>
+          <label>难度
+            <select v-model="editForm.difficulty">
+              <option value="easy">简单</option><option value="medium">中等</option><option value="hard">困难</option>
+            </select>
+          </label>
+          <label>学历
+            <select v-model="editForm.education">
+              <option value="any">不限</option><option value="college">大专</option>
+              <option value="bachelor">本科</option><option value="master">硕士</option>
+            </select>
+          </label>
+          <label class="span2">岗位标签（空 = 通用）
+            <input v-model.trim="editForm.job_tag" placeholder="如：Python 后端" />
+          </label>
+          <label class="span2">题目
+            <textarea v-model="editForm.question" rows="3" />
+          </label>
+          <label class="span2">参考答案要点
+            <textarea v-model="editForm.reference" rows="3" />
+          </label>
+        </div>
+        <div class="modal-foot">
+          <button class="btn-primary" @click="saveQuestion">保存</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 会话审阅弹窗 -->
     <div v-if="detail.open" class="overlay" @click.self="detail.open = false">
       <div class="modal card">
@@ -244,6 +364,7 @@ const tabs = [
   { key: 'industry', label: '行业调研' },
   { key: 'project', label: '求职项目' },
   { key: 'members', label: '会员管理' },
+  { key: 'questions', label: '题库' },
 ]
 
 const tab = ref('users')
@@ -257,6 +378,20 @@ const mAction = ref('') // 进行中的操作（防重复点击）
 const loading = ref(false)
 const error = ref('')
 const deleting = ref(null)
+
+// ---- 题库 ----
+const questions = ref([])
+const qbStage = ref('')
+const qbRole = ref('')
+const qbDiff = ref('')
+const qbStatus = ref('')
+const qbKeyword = ref('')
+const genForm = ref({ job_title: '', role: 'technical', difficulty: 'medium', count: 6 })
+const genMsg = ref('')
+const genBusy = ref(false)
+const editOpen = ref(false)
+const editForm = ref({ id: 0, stage: 'basic', role: 'technical', difficulty: 'medium', education: 'any', job_tag: '', question: '', reference: '' })
+const editErr = ref('')
 
 // 搜索 / 筛选
 const qUser = ref('')
@@ -313,13 +448,14 @@ async function loadAll() {
   loading.value = true
   error.value = ''
   try {
-    const [u, s, i, p, m, c] = await Promise.all([
+    const [u, s, i, p, m, c, qs] = await Promise.all([
       adminApi.users(),
       adminApi.sessions(),
       adminApi.industry(),
       adminApi.project(),
       adminApi.members(),
       adminApi.codes(),
+      adminApi.questions(),
     ])
     users.value = u
     sessions.value = s
@@ -327,6 +463,7 @@ async function loadAll() {
     project.value = p
     members.value = m
     codes.value = c
+    questions.value = qs
   } catch (e) {
     error.value = e.response?.data?.detail || '加载失败，请确认使用管理员账号'
   } finally {
@@ -424,6 +561,73 @@ async function doDelete(call, after, key) {
     error.value = e.response?.data?.detail || '删除失败'
   } finally {
     deleting.value = null
+  }
+}
+
+// ---- 题库 ----
+const stageName = (s) => ({ opening: '开场', basic: '基础', deep: '深度', stress: '压力', closing: '收尾' }[s] || s)
+const roleName = (r) => ({ technical: '技术面', HR: 'HR 面', stress: '压力面' }[r] || r)
+const diffName = (d) => ({ easy: '简单', medium: '中等', hard: '困难' }[d] || d)
+const filteredQuestions = computed(() =>
+  questions.value.filter((q) =>
+    (!qbStage.value || q.stage === qStage.value)
+    && (!qbRole.value || q.role === qRole.value)
+    && (!qbDiff.value || q.difficulty === qDiff.value)
+    && (!qbStatus.value || q.status === qStatus.value)
+    && (!qbKeyword.value || q.question.includes(qKeyword.value) || (q.job_tag || '').includes(qKeyword.value))
+  )
+)
+
+async function reloadQuestions() {
+  questions.value = await adminApi.questions()
+}
+
+function openCreate() {
+  editForm.value = { id: 0, stage: 'basic', role: 'technical', difficulty: 'medium', education: 'any', job_tag: '', question: '', reference: '' }
+  editErr.value = ''
+  editOpen.value = true
+}
+
+function openEdit(q) {
+  editForm.value = { ...q }
+  editErr.value = ''
+  editOpen.value = true
+}
+
+async function saveQuestion() {
+  const f = editForm.value
+  if (!f.question.trim()) { editErr.value = '题目内容不能为空'; return }
+  try {
+    if (f.id) await adminApi.updateQuestion(f.id, f)
+    else await adminApi.createQuestion(f)
+    editOpen.value = false
+    await reloadQuestions()
+  } catch (e) {
+    editErr.value = e.response?.data?.detail || '保存失败'
+  }
+}
+
+async function setQStatus(q, status) {
+  await adminApi.setQuestionStatus(q.id, status)
+  await reloadQuestions()
+}
+
+function removeQuestion(q) {
+  doDelete(() => adminApi.deleteQuestion(q.id), reloadQuestions, 'q' + q.id)
+}
+
+async function runGenerate() {
+  if (!genForm.value.job_title.trim()) { genMsg.value = '先填目标岗位'; return }
+  genBusy.value = true
+  genMsg.value = ''
+  try {
+    const r = await adminApi.generateQuestions(genForm.value)
+    genMsg.value = `AI 出题完成：新增 ${r.added} 道，跳过 ${r.skipped} 道（重复/格式）`
+    await reloadQuestions()
+  } catch (e) {
+    genMsg.value = e.response?.data?.detail || 'AI 出题失败'
+  } finally {
+    genBusy.value = false
   }
 }
 
@@ -623,6 +827,13 @@ onMounted(loadAll)
 @media (max-width: 1000px) {
   .stats { grid-template-columns: repeat(3, 1fr); }
 }
+.qgen { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.qgen .narrow { width: 70px; }
+.edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin: 10px 0; }
+.edit-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-secondary); }
+.edit-grid .span2 { grid-column: span 2; }
+.edit-grid input, .edit-grid select, .edit-grid textarea { font: inherit; }
+.modal-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
 @media (max-width: 640px) {
   .stats { grid-template-columns: repeat(2, 1fr); }
   .preview { display: none; }

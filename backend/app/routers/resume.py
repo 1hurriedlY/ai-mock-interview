@@ -14,8 +14,11 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from .. import config
+from ..auth import get_current_user
 from ..database import get_db
+from ..models import User
 from ..redis_client import redis_client
+from ..services.ai_config_service import resolve_config
 from ..services.agents.resume_agent import ResumeAgent
 from ..services.resume_parser import extract_text
 
@@ -32,6 +35,7 @@ MAX_SIZE = 10 * 1024 * 1024
 @router.post("/upload")
 async def upload_resume(
     file: UploadFile = File(..., description="简历文件（pdf/docx/txt）"),
+    current: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
     """上传简历：解析 → 分析 → 缓存。重复上传同一文件直接返回缓存。"""
@@ -83,7 +87,7 @@ async def upload_resume(
 
     # 调用简历分析 Agent
     try:
-        analysis = ResumeAgent().analyze(text)
+        analysis = ResumeAgent(resolve_config(db, current.id)).analyze(text)
     except Exception as exc:
         logger.exception("简历分析 Agent 调用失败")
         raise HTTPException(status_code=502, detail=f"简历分析失败：{exc}")

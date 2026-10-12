@@ -5,6 +5,9 @@
 - 调用 ScoringAgent.generate_report
 - 把报告 JSON 落库 interview_reports
 - 失败时提供兜底报告（AI 不可用时也不让流程崩溃）
+
+ai_config：当前用户的模型配置（来自 ai_config_service.resolve_config），
+为 None 时评分 Agent 回退 .env 里的全局默认。
 """
 import json
 import logging
@@ -27,11 +30,13 @@ def generate_and_store_report(
     resume_summary: str = "",
     conversation: list[dict],
     expression_seq: list[dict] | None = None,
+    ai_config: dict | None = None,
 ) -> InterviewReport:
     """生成评分报告并落库，返回 ORM 对象。
 
     conversation 为完整对话记录（user/assistant 交替）。
     expression_seq 为可选表情时间轴（视觉模块）。
+    ai_config 为可选模型配置（用户自定义模型）。
     """
     # 已有报告则直接返回（幂等，防止重复调用大模型）
     existing = db.query(InterviewReport).filter(
@@ -41,7 +46,7 @@ def generate_and_store_report(
         return existing
 
     try:
-        report_data = ScoringAgent().generate_report(
+        report_data = ScoringAgent(ai_config).generate_report(
             role=role,
             job_title=job_title,
             resume_text=resume_text,
@@ -56,7 +61,7 @@ def generate_and_store_report(
     # 逐题复盘：AI 重新生成每道题的参考答案（独立调用，失败回退空 → 前端用面试时参考要点兜底）
     qa_pairs = _build_qa_pairs(conversation)
     if qa_pairs:
-        qa_agent = ScoringAgent()
+        qa_agent = ScoringAgent(ai_config)
         qa_agent.MAX_OUTPUT_TOKENS = 8192  # 逐题长答案，放宽输出上限防长对话截断
         qna = qa_agent.generate_model_answers(
             qa_pairs, job_title=job_title, role=role
@@ -99,7 +104,7 @@ def _fallback_report(exc: Exception) -> dict:
             "strengths": [],
             "gaps": [],
         },
-        "suggestions": ["请确认 DASHSCOPE_API_KEY 配置正确后重新生成报告。"],
+        "suggestions": ["请确认模型配置正确（设置页自定义模型或 .env 默认）后重新生成报告。"],
         "expression_analysis": {},
         "qna": [],
     }

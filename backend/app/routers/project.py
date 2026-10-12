@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..database import get_db
 from ..models import ProjectReport, User
+from ..services.ai_config_service import resolve_config
 from ..services.agents.project_agent import ProjectAgent
 
 logger = logging.getLogger(__name__)
@@ -85,7 +86,7 @@ def generate_channels(
 ):
     """生成求职/接单渠道平台清单并入库。"""
     try:
-        content = ProjectAgent().generate_channels()
+        content = ProjectAgent(resolve_config(db, current.id)).generate_channels()
     except Exception as exc:
         logger.exception("渠道清单 Agent 调用失败")
         raise HTTPException(status_code=502, detail=f"生成渠道清单失败：{exc}")
@@ -120,7 +121,7 @@ def generate_script(
         raise HTTPException(status_code=400, detail="项目名称不能为空")
 
     try:
-        content = ProjectAgent().generate_script(project_name, body.description)
+        content = ProjectAgent(resolve_config(db, current.id)).generate_script(project_name, body.description)
     except Exception as exc:
         logger.exception("讲项目话术 Agent 调用失败")
         raise HTTPException(status_code=502, detail=f"生成话术失败：{exc}")

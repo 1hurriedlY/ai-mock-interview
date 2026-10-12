@@ -35,7 +35,9 @@ from ..services.agents.question_agent import (
     QuestionAgent,
     ROLE_NAMES,
 )
+from ..services.ai_config_service import resolve_config
 from ..services.report_service import generate_and_store_report
+from ..services.question_bank_service import build_card_from_bank, backfill_from_card
 from ..services.membership_service import consume_free, ensure_allowed
 
 logger = logging.getLogger(__name__)
@@ -136,6 +138,7 @@ def _spawn_report_builder(
     session: InterviewSession,
     conversation: list[dict] | None = None,
     expression_seq: list[dict] | None = None,
+    ai_config: dict | None = None,
     *,
     db: Session | None = None,
 ) -> None:
@@ -158,6 +161,7 @@ def _spawn_report_builder(
             resume_summary,
             conversation or [],
             expression_seq or meta.get("expression_seq") or [],
+            ai_config,
         ),
         daemon=True,
     ).start()
@@ -171,6 +175,7 @@ def _build_report_async(
     resume_summary: str,
     conversation: list[dict],
     expression_seq: list[dict],
+    ai_config: dict | None = None,
 ) -> None:
     """后台生成评分报告并落库（独立数据库会话，不占用请求连接）。"""
     db = SessionLocal()
@@ -184,6 +189,7 @@ def _build_report_async(
             resume_summary=resume_summary,
             conversation=conversation,
             expression_seq=expression_seq,
+            ai_config=ai_config,
         )
         logger.info("后台评分报告已生成 session_id=%s", session_id)
     except Exception:  # noqa: BLE001
@@ -258,21 +264,53 @@ def start_interview(
     db.commit()
     db.refresh(session)
 
-    # 同步生成面试题卡：失败则回滚会话（原行为，保证进入面试即有完整题卡）
+    # 组卡双轨：优先题库（approved 题按阶段凑齐），不够则 AI 现场生成并把好题回填题库
+    card_source = "ai"
+    card = None
+    resume_skills = (resume_analysis or {}).get("skills") or []
     try:
-        card = QuestionAgent().generate_card(
+        card = build_card_from_bank(
+            db,
             job_title=body.job_title,
             role=role,
-            resume_analysis=resume_analysis,
             difficulty=difficulty,
             education=education,
+            resume_skills=resume_skills,
         )
-    except Exception as exc:
-        # 题卡失败则将会话回滚删除，避免留下脏数据
-        db.delete(session)
-        db.commit()
-        logger.exception("题卡生成失败")
-        raise HTTPException(status_code=502, detail=f"题卡生成失败：{exc}")
+        if card:
+            card_source = "bank"
+    except Exception:
+        logger.exception("题库组卡失败，回退 AI 生成")
+        card = None
+
+    if card is None:
+        # 同步生成面试题卡：失败则回滚会话（原行为，保证进入面试即有完整题卡）
+        try:
+            card = QuestionAgent(resolve_config(db, current.id)).generate_card(
+                job_title=body.job_title,
+                role=role,
+                resume_analysis=resume_analysis,
+                difficulty=difficulty,
+                education=education,
+            )
+        except Exception as exc:
+            # 题卡失败则将会话回滚删除，避免留下脏数据
+            db.delete(session)
+            db.commit()
+            logger.exception("题卡生成失败")
+            raise HTTPException(status_code=502, detail=f"题卡生成失败：{exc}")
+        # AI 现场生成的题按哈希去重回填题库（draft，待审核）——失败不影响面试
+        try:
+            backfill_from_card(
+                db,
+                card,
+                role=role,
+                difficulty=difficulty,
+                education=education,
+                job_title=body.job_title,
+            )
+        except Exception:
+            logger.exception("题卡回填题库失败（不影响面试）")
     redis_client.set_question_card(session.id, card)
 
     # 会话元信息（供面试官/评分使用）
@@ -282,6 +320,7 @@ def start_interview(
         "resume_id": body.resume_id,
         "difficulty": difficulty,
         "education": education,
+        "card_source": card_source,
     }
     if resume_analysis:
         meta["resume_summary"] = (
@@ -345,7 +384,7 @@ def retrain(
     db.refresh(session)
 
     try:
-        card = QuestionAgent().generate_card(
+        card = QuestionAgent(resolve_config(db, current.id)).generate_card(
             job_title=src.job_title or "目标岗位",
             role=src.interviewer_role or "technical",
             resume_analysis=None,
@@ -428,7 +467,11 @@ def chat(
         raise HTTPException(status_code=400, detail="消息不能为空")
 
     try:
-        pipeline = InterviewPipeline(session_id, role=session.interviewer_role)
+        pipeline = InterviewPipeline(
+            session_id,
+            role=session.interviewer_role,
+            ai_config=resolve_config(db, current.id),
+        )
     except PipelineError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -548,7 +591,11 @@ def end_interview(
     if already and not existing_report:
         if not _REPORT_LOCKS.get(session_id):
             # 极端情况：进程重启后锁丢失，重新拉起生成
-            _spawn_report_builder(session_id, session, db=db)
+            _spawn_report_builder(
+                session_id, session,
+                ai_config=resolve_config(db, current.id),
+                db=db,
+            )
         return {
             "session_id": session_id,
             "status": session.status,
@@ -585,6 +632,7 @@ def end_interview(
         session,
         conversation=conversation,
         expression_seq=expression_seq,
+        ai_config=resolve_config(db, current.id),
     )
 
     return {

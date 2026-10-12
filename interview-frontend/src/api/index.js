@@ -119,6 +119,14 @@ export const memberApi = {
   mockPay: (orderId) => http.post(`/member/orders/${orderId}/mock-pay`).then(r => r.data),
 }
 
+// 模型配置：自定义大模型接入（本地部署 / 云端 API）
+export const aiConfigApi = {
+  get: () => http.get('/ai-config').then(r => r.data),
+  save: (payload) => http.put('/ai-config', payload).then(r => r.data),
+  clear: () => http.delete('/ai-config').then(r => r.data),
+  test: (payload) => http.post('/ai-config/test', payload).then(r => r.data),
+}
+
 export const adminApi = {
   users: () => http.get('/admin/users').then(r => r.data),
   deleteUser: (id) => http.delete(`/admin/users/${id}`).then(r => r.data),
@@ -133,6 +141,12 @@ export const adminApi = {
   grantMember: (id, days) => http.post(`/admin/members/users/${id}/grant`, { days }).then(r => r.data),
   codes: () => http.get('/admin/members/codes').then(r => r.data),
   genCodes: (count, days) => http.post('/admin/members/codes/generate', { count, days }).then(r => r.data),
+  questions: (params = {}) => http.get('/admin/questions', { params }).then(r => r.data),
+  createQuestion: (payload) => http.post('/admin/questions', payload).then(r => r.data),
+  updateQuestion: (id, payload) => http.put(`/admin/questions/${id}`, payload).then(r => r.data),
+  setQuestionStatus: (id, status) => http.post(`/admin/questions/${id}/status`, { status }).then(r => r.data),
+  deleteQuestion: (id) => http.delete(`/admin/questions/${id}`).then(r => r.data),
+  generateQuestions: (payload) => http.post('/admin/questions/generate', payload).then(r => r.data),
 }
 
 export default http

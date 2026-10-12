@@ -17,17 +17,52 @@
 | 双栏工作台 | 登录后首页：左「简历（可选）」右「面试配置」，可选**难度（简单/中等/困难）· 学历（不限/大专/本科/硕士）· 面试官**（下拉选择），一键开始面试 |
 | 账号 | 注册 / 登录，JWT（24h）认证，路由守卫；侧栏**用户头像**（按用户名自动生成）→ 小窗：设置 / 退出（管理员另有「管理后台」入口） |
 | 用户设置 | `/settings` 独立设置页：背景动态效果、页面过渡动效、AI 回复自动朗读、默认面试官（偏好存本机，即时全局生效） |
+| 模型配置 | `/settings` 页「模型配置」卡片：**自定义大模型接入**——本地部署（Ollama / LM Studio / vLLM）或云端 API（通义千问 / DeepSeek / OpenAI / Kimi / 智谱），自填接口地址、模型名与 API Key，支持「测试连接」；配置**按用户隔离**，未配置时回退 `.env` 默认，密钥掩码返回 |
 | 会员机制 | 免费 3 场面试 / 免费导出 2 次；`/membership` 会员中心：套餐（月 ¥9.9 / 年 ¥99）**模拟支付**开通、兑换码激活；权益拦截在后端（start/export 402 引导升级） |
 | 简历 | 拖拽上传 PDF / DOCX / TXT / MD → 抽取文本 → AI 分析（技能/项目/亮点画像） |
 | 模拟面试 | 技术面 / HR 行为面 / 压力面 × 难度 × 学历；难度学历决定出题深度与开场定位；题卡五阶段：开场自我介绍 → 基础题 → 深度题 → 压力/场景题 → 收尾反问 |
 | 语音 | Web Speech：语音输入（ASR）+ AI 朗读（TTS），浏览器原生 |
 | 表情分析 | 摄像头 + face-api.js 本地识别表情；画面不上传，仅表情时间轴随面试结束上传 → 报告「表情点评 + 时间轴曲线」 |
 | 评分报告 | 雷达图五维（专业技能/沟通表达/逻辑思维/项目经验/岗位匹配）+ 总评 + 匹配度 + 逐题参考要点 + 建议；可导出 DOCX/PDF |
+| 题库管理 | `/admin` 题库页签：题目增删改查 + 审核流转（draft→approved/disabled）+ AI 批量出题入库；面试组卡**优先从题库选题**（按岗位/角色/难度/学历匹配），不够再 AI 现场生成并回填 draft |
 | 行业调研 | 输入陌生行业 → 结构化报告（产业链/头部玩家/商业模式/趋势/岗位技能/面试题） |
 | 求职工具 | 求职/接单渠道清单；STAR 法讲项目面试话术 |
-| 管理员后台 | `/admin`：统计卡 + 多页签管理——账号（删除级联清理）、面试会话（审阅/删除）、行业调研记录、求职项目记录、**会员管理（会员列表/手动开通/生成兑换码）**，均支持搜索筛选；管理员账号受保护 |
+| 管理员后台 | `/admin`：统计卡 + 多页签管理——账号（删除级联清理）、面试会话（审阅/删除）、行业调研记录、求职项目记录、**会员管理（会员列表/手动开通/生成兑换码）**、**题库（增删改查/审核/AI 批量出题）**，均支持搜索筛选；管理员账号受保护 |
 
 > 管理员说明：启动时后端自动创建管理员 `admin / 123456`（可用环境变量 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 覆盖）；自行注册的账号默认为普通用户。生产使用请务必修改默认口令。
+
+## 核心流程图
+
+一次完整模拟面试的端到端流程（从登录到报告导出），以及题库 `question_bank` 如何介入组卡：
+
+```mermaid
+flowchart TD
+    A[用户登录 / JWT 校验] --> B{权益校验<br/>查 users 表}
+    B -->|额度不足 → 402| Z[引导升级会员<br/>/membership]
+    B -->|免费 / 会员额度内| C[配置面试<br/>岗位 / 角色 / 难度 / 学历 + 可选简历]
+    C --> D[点击开始面试<br/>POST /interview/start]
+    D --> E[build_card_from_bank<br/>按 岗位/角色/难度/学历/简历技能<br/>去 question_bank 匹配 approved 题]
+    E --> F{五阶段题量<br/>是否全部凑齐?}
+    F -->|是| G[采用题库题卡<br/>card_source = bank]
+    F -->|否| H[AI 现场生成题卡<br/>card_source = ai]
+    H --> H1[新题按文本哈希去重<br/>回填 question_bank 为 draft<br/>待 /admin 审核]
+    G --> I["题卡存入 Redis<br/>session:{id}:card"]
+    H --> I
+    H1 --> I
+    I --> J[进入面试页<br/>SSE 流式对话]
+    J --> K[pipeline 状态机推进<br/>next / probe / followup / finish]
+    K -->|继续本题/下一题| J
+    K -->|finish 收尾| L[结束面试<br/>POST /interview/end]
+    L --> M[接口立即返回「生成中」]
+    M --> N[后台线程异步生成报告<br/>scoring_agent → interview_reports]
+    N --> O[前端轮询<br/>报告页自动展示]
+    O --> P[雷达图 / 岗位匹配 / 建议 / 表情时间轴]
+    P --> Q{导出报告?}
+    Q -->|DOCX / PDF| R[export_service 渲染<br/>额度拦截 → 402]
+    Q -->|暂不导出| S[存入面试历史<br/>可随时回看]
+```
+
+> 要点：题库是在**「开始面试组卡」**这一步介入的（见图中"五阶段题量是否全部凑齐"的双轨判断），对话过程中不再查库；无论题库还是 AI 出题，最终都统一进 Redis 题卡，由 `pipeline` 按游标推进，下游透明。
 
 ## 目录结构
 
@@ -38,7 +73,7 @@ interview-frontend/                     # 仓库根
 │   │   ├── main.py                     # 应用入口：CORS、注册 9 组路由(/api/*)、/api/health、启动建表
 │   │   ├── config.py                   # 读项目根 .env：MySQL/Redis/JWT/DashScope + 运行期目录(uploads/exports) + 题卡阶段常量
 │   │   ├── database.py                 # SQLAlchemy engine/SessionLocal/Base；init_db：create_all 建表 + 增量迁移(用户/会话/会员) + seed 管理员(admin/123456)
-│   │   ├── models.py                   # ORM：users / interview_sessions / chat_messages / interview_reports / industry_reports / project_reports / membership_codes / member_orders（见「数据库结构」）
+│   │   ├── models.py                   # ORM：users / interview_sessions / chat_messages / interview_reports / industry_reports / project_reports / membership_codes / member_orders / question_bank（见「数据库结构」）
 │   │   ├── auth.py                     # PBKDF2 密码哈希；JWT 签发/校验(24h)；get_current_user / require_admin 依赖
 │   │   ├── redis_client.py             # Redis 薄封装：会话上下文/简历/题卡/阶段/元信息；全部 try/except 降级 MySQL，不阻塞主流程
 │   │   ├── routers/                    # 路由模块（每个文件一类接口，见下表）
@@ -50,12 +85,14 @@ interview-frontend/                     # 仓库根
 │   │   │   ├── industry.py             #   行业调研：research 生成结构化报告 + 历史
 │   │   │   ├── project.py              #   求职渠道清单 / 讲项目话术脚本 + 历史
 │   │   │   ├── membership.py           #   会员：status / 兑换码激活 / 模拟支付订单
+│   │   │   ├── ai_config.py            #   模型配置：当前用户自定义大模型（本地/云端）读写 + 连通性测试
 │   │   │   └── admin.py                #   管理端：users/sessions/industry/project/members 列表·详情·删除（require_admin）
 │   │   ├── services/                   # 业务服务（非 Agent）
 │   │   │   ├── resume_parser.py        #   简历文件解析（pypdf / python-docx，含表格文本）
 │   │   │   ├── report_service.py       #   评分报告组装与落库（失败给兜底报告）
 │   │   │   ├── export_service.py       #   DOCX/PDF 渲染（中文系统字体优先）
-│   │   │   └── membership_service.py   #   会员纯逻辑：套餐/额度/兑换码/模拟支付（权益判断唯一出口）
+│   │   │   ├── membership_service.py   #   会员纯逻辑：套餐/额度/兑换码/模拟支付（权益判断唯一出口）
+│   │   │   └── ai_config_service.py    #   模型配置：预设清单 / 读写 / 解析（用户配置优先→.env 回退）/ 连通性测试
 │   │   └── services/agents/            # Agent 层（继承 base.py 的 BaseAgent，封装通义千问调用）
 │   │       ├── base.py                 #   BaseAgent：非流式/流式/JSON 对话封装
 │   │       ├── resume_agent.py         #   简历画像（技能/项目/亮点/教育）
@@ -110,15 +147,17 @@ interview-frontend/                     # 仓库根
 ├── .env                                # 真实配置（gitignore，勿提交）
 ├── interview_schema.sql                # 建库参考脚本（实际运行由后端 create_all 自动建）
 ├── start.bat                           # Windows 一键启动（检测 MySQL/Redis → 后端 → 前端 → 开浏览器）
-├── CLAUDE.md                           # 给 AI 协作者的开发约定（本文件）
+├── docs/                               # 设计与方案文档（会员机制方案、答辩 slide 大纲）
+├── scripts/_archive/                   # 开发期临时脚本归档（本机保留，不入库）
+├── AGENTS.md                           # 给 AI 协作者的开发约定
 └── README.md                           # 本文档
 ```
 
-> 根目录下的 `_verify_*.py`、`_e2e_*.py` 等为开发期临时脚本，可忽略；`dist/` 为前端构建产物。
+> `scripts/_archive/` 存放开发期临时脚本（`_verify_*.py` 等），不入库；`docs/` 存放设计与方案文档。
 
 ## 数据库结构
 
-后端使用 SQLAlchemy ORM，表由启动时 `database.py` 的 `create_all` 自动创建；旧表缺列走增量迁移（`_migrate_users_is_admin`、`_migrate_session_fields`），**不删库、不手动改表**。以下为 6 张表（括号内为说明）：
+后端使用 SQLAlchemy ORM，表由启动时 `database.py` 的 `create_all` 自动创建；旧表缺列走增量迁移（`_migrate_users_is_admin`、`_migrate_session_fields`），**不删库、不手动改表**。以下为 10 张表（括号内为说明）：
 
 ### users —— 用户
 | 字段 | 类型 | 说明 |
@@ -210,11 +249,46 @@ interview-frontend/                     # 仓库根
 | status | VARCHAR(16) | pending / paid / refunded |
 | created_at / paid_at | DATETIME | 下单 / 支付时间 |
 
+### question_bank —— 题库
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | BIGINT PK | |
+| stage | VARCHAR(16) | opening / basic / deep / stress / closing |
+| role | VARCHAR(16) | technical / HR / stress |
+| difficulty | VARCHAR(16) | easy / medium / hard |
+| education | VARCHAR(16) | any / college / bachelor / master |
+| job_tag | VARCHAR(255) | 岗位关键词（空=通用题） |
+| question | TEXT | 题目 |
+| reference | TEXT | 参考答案要点（可空） |
+| source | VARCHAR(16) | ai_generated（AI 生成）/ manual（手动） |
+| status | VARCHAR(16) | draft（待审核）/ approved（已启用）/ disabled（已下架） |
+| content_hash | VARCHAR(64) | 题目文本哈希（去重，索引） |
+| used_count / last_used_at | INT / DATETIME | 使用次数 / 最近使用（选题冷却降权用） |
+| created_at | DATETIME | |
+
+### user_ai_configs —— 用户自定义模型配置（1 用户至多 1 条）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | BIGINT PK | |
+| user_id | BIGINT UNIQUE | 所属用户（**无库级外键**，删除用户时业务层清理） |
+| provider_type | VARCHAR(16) | local（本地部署）/ cloud（云端 API） |
+| provider | VARCHAR(32) | 服务商标识（ollama / lmstudio / vllm / dashscope / deepseek / openai / moonshot / zhipu / custom） |
+| base_url | VARCHAR(255) | OpenAI 兼容接口地址 |
+| api_key | VARCHAR(512) | API Key（本地部署可留空；**对外一律掩码返回**） |
+| model | VARCHAR(128) | 模型名称 |
+| updated_at | DATETIME | 最近修改时间 |
+
+> 模型配置优先级：用户自定义（本表）> `.env` 的 DashScope 默认；所有 Agent 经 `ai_config_service.resolve_config()` 取最终生效配置。
+
+> **安全说明**：`api_key` 在库内为**明文存储**（本地项目定位）；接口对外一律掩码返回（如 `sk-******tZgg`）。**部署到公网前须为该字段加密**（可用 `JWT_SECRET` 派生密钥做对称加密）并启用 HTTPS。
+
+> 题库工作流：面试组卡时**优先**按 岗位/角色/难度/学历（简历技能加权）取 approved 题（每阶段 opening1/basic2/deep2/stress1/closing1，不足则整体回退 AI 现场生成）；AI 生成的题按文本哈希去重后自动回填为 draft，管理员在 `/admin` 题库页签审核（通过/下架/编辑/删除），另有 AI 批量出题（1-10 道/次，仅管理员）。选题按 used_count / last_used_at 升序冷却降权，降低同一用户连续撞题概率。
+
 > 说明：`dimensions / match_analysis / suggestions / expression_analysis / content` 等长内容统一用 **TEXT 存 JSON 字符串**（读写时业务层 `json.dumps/loads`），不使用 MySQL JSON 类型，方便跨库兼容。新表 membership_codes / member_orders 刻意不建库级外键（规避 MySQL 对部分 FK DDL 的 3780 兼容问题），由 `admin.delete_user` 业务层清理。
 
 ## 环境要求
 
-- Python 3.11（虚拟环境 `.venv`）
+- Python 3.12（虚拟环境 `.venv`）
 - MySQL（`127.0.0.1:3306`）、Redis（`127.0.0.1:6379`）
 - Node.js + npm
 - 通义千问 DashScope API Key
@@ -258,6 +332,8 @@ npm run dev
 - **报告生成中**：点「结束面试」后报告由 AI 后台生成，页面显示骨架屏并自动轮询，生成后自动展示；中途可离开，稍后从「面试历史」查看。
 - **导出**：报告页可直接导出 DOCX / PDF（内容含五维评分、匹配分析、建议与表情分析）。
 - **设置**：点左下角头像 → 「设置」，可开关背景/页面动效、AI 自动朗读、默认面试官；浏览器 `Esc` 可返回。
+- **模型配置**：在「设置」页最下方选「本地部署」或「云端 API」，挑一个服务商（会自动填好接口地址与模型名），填上 API Key 后点「测试连接」确认可用，再点「保存」。保存后所有 AI 能力（出题、面试官对话、简历分析、行业调研、评分报告）都走你的模型；点「恢复默认」退回 `.env` 配置。
+- **密钥安全**：自定义模型的 API Key 以**明文**存于本地数据库 `user_ai_configs.api_key`（接口对外只返回掩码，如 `sk-******tZgg`，前端不回显明文）。本项目定位为本地运行，**若要部署到公网，请先为该字段加密**（例如用 `.env` 的 `JWT_SECRET` 派生密钥做对称加密），并确保全站 HTTPS。
 - **会员**：非会员可免费体验 3 场面试、免费导出 2 次报告；额度用完会被后端拦截（402）并引导到 `/membership`，可在会员中心用兑换码或「模拟支付」开通会员（月 ¥9.9 / 年 ¥99，不会产生真实扣费）。管理员在后台「会员管理」页签可手动开通或批量生成兑换码。
 - **管理员**：用 `admin` 账号登录后，点左下角头像 → 「管理后台」。
 - 不支持语音/摄像头的浏览器（如 Firefox 部分功能）会自动降级为纯文字，功能不受影响。

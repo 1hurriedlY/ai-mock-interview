@@ -31,11 +31,12 @@ class InterviewPipeline:
     """单场面试的状态机。所有状态都挂在 session_id 上。"""
 
     def __init__(self, session_id: int, *, role: str = "technical",
-                 resume_summary: str = "", resume_analysis: dict | None = None):
+                 resume_summary: str = "", resume_analysis: dict | None = None,
+                 ai_config: dict | None = None):
         self.session_id = session_id
         self.role = role
         self.resume_summary = resume_summary or _summarize(resume_analysis)
-        self.interviewer = InterviewerAgent()
+        self.interviewer = InterviewerAgent(ai_config)
 
     # ---------- 状态读写 ----------
     def _load_card(self) -> dict:

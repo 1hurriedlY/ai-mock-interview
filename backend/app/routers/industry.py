@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..database import get_db
 from ..models import IndustryReport, User
+from ..services.ai_config_service import resolve_config
 from ..services.agents.industry_agent import IndustryAgent
 
 logger = logging.getLogger(__name__)
@@ -77,7 +78,7 @@ def research_industry(
 
     # 调用行业调研 Agent 生成结构化报告
     try:
-        content = IndustryAgent().research(industry_name)
+        content = IndustryAgent(resolve_config(db, current.id)).research(industry_name)
     except Exception as exc:
         logger.exception("行业调研 Agent 调用失败")
         raise HTTPException(status_code=502, detail=f"行业调研失败：{exc}")

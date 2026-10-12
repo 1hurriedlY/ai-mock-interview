@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import config
 from .database import init_db
-from .routers import admin, auth, export, history, industry, interview, membership, project, resume
+from .routers import admin, ai_config, auth, export, history, industry, interview, membership, project, resume
 
 app = FastAPI(title="模拟面试 AI 助手", version="0.1.0")
 
@@ -27,6 +27,7 @@ app.include_router(project.router, prefix="/api/project", tags=["项目渠道"])
 app.include_router(export.router, prefix="/api/report", tags=["报告导出"])
 app.include_router(membership.router, prefix="/api/member", tags=["会员"])
 app.include_router(admin.router, prefix="/api/admin", tags=["管理"])
+app.include_router(ai_config.router, prefix="/api/ai-config", tags=["模型配置"])
 
 
 @app.on_event("startup")

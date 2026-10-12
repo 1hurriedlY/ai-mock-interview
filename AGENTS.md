@@ -4,13 +4,14 @@
 模拟面试 AI 助手：FastAPI 后端 + Vue3 前端，本地运行。功能：官网落地页 + 登录工作台（JWT）、简历解析与分析、多角色 Agent 模拟面试（SSE 流式对话 + 语音 + 表情分析，可选难度/学历）、评分报告（雷达图 + 表情时间轴，后台生成）、历史回看、DOCX/PDF 导出、行业调研、求职渠道/讲项目话术、管理员后台（管账号/会话/行业/项目/会员）、**会员机制（免费 3 场 + 兑换码/模拟支付）**、用户头像与独立设置页（/settings）。
 
 ## 目录结构
-- `backend/` — FastAPI 应用（`app/main.py` 入口，注册 9 组路由：auth/resume/interview/history/industry/project/report(export)/member(会员)/admin，另有 `/api/health`；`app/routers/` 各路由模块；`app/services/agents/` Agent：base/resume/question/interviewer/pipeline/scoring/industry/project；`app/services/` 其他业务：resume_parser/report_service/export_service/membership_service；`app/auth.py` PBKDF2 密码哈希 + JWT + get_current_user/require_admin；`app/config.py` 读 .env；`app/models.py` ORM：users/interview_sessions/chat_messages/interview_reports/industry_reports/project_reports/membership_codes/member_orders；`app/database.py` 建表/迁移/seed 管理员；`app/redis_client.py` 缓存）
+- `backend/` — FastAPI 应用（`app/main.py` 入口，注册 10 组路由：auth/resume/interview/history/industry/project/report(export)/member(会员)/admin/ai_config(模型配置)，另有 `/api/health`；`app/routers/` 各路由模块；`app/services/agents/` Agent：base/resume/question/interviewer/pipeline/scoring/industry/project；`app/services/` 其他业务：resume_parser/report_service/export_service/membership_service/ai_config_service/question_bank_service；`app/auth.py` PBKDF2 密码哈希 + JWT + get_current_user/require_admin；`app/config.py` 读 .env；`app/models.py` ORM：users/interview_sessions/chat_messages/interview_reports/industry_reports/project_reports/membership_codes/member_orders/question_bank/user_ai_configs；`app/database.py` 建表/迁移/seed 管理员；`app/redis_client.py` 缓存）
 - `interview-frontend/` — Vue3 + Vite（`src/views/` 视图：Landing/Login/Home/Interview/Report/History/Industry/Project/Admin/Settings/Membership；`src/components/` 组件：VoiceControl/CameraPreview/ScoreRadar/ExpressionChart；`src/composables/`：useVoice/useExpression/useStreamChat/useTypewriter；`src/store/auth.js` 登录态与 `src/store/member.js` 会员态（均无 Pinia）；`src/utils/`：reveal.js（滚动浮现）/ avatar.js（用户名哈希头像）/ settings.js（用户偏好 msi_ 前缀 localStorage）；`src/assets/chartTheme.js`；`src/api/index.js` axios 封装；`src/router/index.js` 路由守卫；`public/models/` face-api.js 模型文件）
 - `interview_schema.sql` — MySQL 建库建表脚本（含 users 表），供手动建库参考；实际运行由后端 create_all 建表
-- `.venv/` — Python 3.11 虚拟环境，后端依赖已全装齐
+- `.venv/` — Python 3.12 虚拟环境，后端依赖已全装齐
 - `.env` — 本地配置（MySQL、Redis、JWT_SECRET、DASHSCOPE_API_KEY），已 gitignore，不修改
 - `start.bat` — Windows 一键启动（检测 MySQL/Redis → 后端 → 前端 → 开浏览器）
 - `backend/uploads/`、`backend/exports/` — 运行期文件，gitignore
+- `docs/` — 设计与方案文档（会员机制方案、答辩 slide 大纲）；`scripts/_archive/` — 开发期临时脚本归档（本机保留，不入库）
 
 ## 环境与连接
 - MySQL：`127.0.0.1:3306`，root/123456，库 `interview`，连接串带 `charset=utf8mb4`
@@ -40,6 +41,9 @@
 - 管理接口：`routers/admin.py` 仅 `require_admin`：users（列表/删除）、sessions（列表 /`{id}` 审阅详情 /删除）、industry（列表/删除）、project（列表/删除）、members（列表 /手动开通 /兑换码生成·列表）；前台 `/admin` 多页签管理台（统计卡 + 搜索筛选 + 会话审阅弹窗 + 会员管理）
 - 会员机制（权益判断唯一出口 `services/membership_service.py`）：非会员免费 3 场面试 + 2 次导出，套餐 month/year（金额单位分）；`is_member/free_left/ensure_allowed/consume_free` 四个函数集中判权；`interview.py start` 与 `export.py` 在生成前 `ensure_allowed`（不足抛 402 中文），成功后非会员 `consume_free` 并在同一请求 commit。兑换码/模拟支付：`routers/membership.py`（/api/member/status、codes/redeem、orders、orders/{id}/mock-pay），订单状态机与幂等按真实支付标准；接真实支付时替换 mock-pay 为渠道回调即可
 - 前端会员态：`store/member.js` reactive 单例（登录时随 token 刷新，登出清空）；`/membership` 页展示额度/套餐/模拟收银台/兑换码；首页「开始面试」额度预检 + 后端 402 引导跳会员中心；报告页导出 402 弹窗引导；头像小窗头部显示「会员·至 xx / 免费面试 N 次」并含会员中心入口
+- 题库双轨组卡：`services/question_bank_service.py`——`POST /interview/start` 先 `build_card_from_bank`（岗位/角色/难度/学历匹配 approved 题，简历技能加权，每阶段 opening1/basic2/deep2/stress1/closing1）；任一阶段不足则整体回退 QuestionAgent 现场生成，并 `backfill_from_card` 按题目文本哈希去重后以 draft 回填题库（失败仅记日志不影响面试）。meta 记 `card_source: bank/ai`
+- 题库表 `question_bank`（无库级外键约定同会员表）：status 三态 draft/approved/disabled，审核流在 `/admin` 题库页签（列表筛选/新增/编辑/删除/状态流转/AI 批量出题 1-10 道，仅 require_admin）；选题按 used_count+last_used_at 升序冷却降权，避免同一用户连续撞题；改题目文本必须重算 content_hash
+- 模型配置（**每个用户各自一份**，表 `user_ai_configs`）：`services/ai_config_service.py` 是唯一出口——`resolve_config(db, user_id)` 返回最终生效的 `{base_url, api_key, model}`（用户自定义优先，未配置回退 .env 的 DashScope）；**所有 Agent 实例化时把该配置传给 `BaseAgent(ai_config)`**（不传则用 .env 默认），新增 Agent 调用点必须照此接入。前端 `/settings` 的「模型配置」卡片读写 `/api/ai-config`（GET/PUT/DELETE + POST /test）；密钥一律掩码返回（**但库内为明文存储**，本地项目定位；公网部署前须加密该字段并启用 HTTPS），保存时 api_key 传空串表示保持原值。支持本地部署（Ollama/LM Studio/vLLM，base_url 指向本机）与云端 API（通义千问/DeepSeek/OpenAI/Kimi/智谱/自定义）
 
 ## 红线（任何情况先征求用户同意）
 - 不修改 `.env`、密钥、token

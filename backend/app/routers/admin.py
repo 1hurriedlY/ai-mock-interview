@@ -27,12 +27,14 @@ from ..models import (
     MemberOrder,
     MembershipCode,
     ProjectReport,
+    QuestionBank,
     User,
 )
 from ..redis_client import redis_client
 from ..services.agents.question_agent import ROLE_NAMES
 from ..services.membership_service import generate_codes as _gen_codes
 from ..services.membership_service import grant_days, is_member
+from ..services.question_bank_service import content_hash
 
 logger = logging.getLogger(__name__)
 
@@ -503,3 +505,298 @@ def make_codes(
     codes = _gen_codes(db, count, days)
     logger.info("管理员 %s 生成兑换码 %s 个（%s 天）", current.id, len(codes), days)
     return {"ok": True, "count": len(codes), "days": days, "codes": codes}
+
+
+# ---------- 题库管理 ----------
+VALID_Q_STAGES = {"opening", "basic", "deep", "stress", "closing"}
+VALID_Q_ROLES = {"technical", "HR", "stress"}
+VALID_Q_DIFFICULTY = {"easy", "medium", "hard"}
+VALID_Q_EDUCATION = {"any", "college", "bachelor", "master"}
+VALID_Q_STATUS = {"draft", "approved", "disabled"}
+
+
+class AdminQuestionItem(BaseModel):
+    id: int
+    stage: str
+    role: str
+    difficulty: str
+    education: str
+    job_tag: str
+    question: str
+    reference: str
+    source: str
+    status: str
+    used_count: int
+    last_used_at: str
+    created_at: str
+
+
+class AdminQuestionCreate(BaseModel):
+    stage: str
+    role: str = "technical"
+    difficulty: str = "medium"
+    education: str = "any"
+    job_tag: str = ""
+    question: str
+    reference: str = ""
+    status: str = "approved"
+
+
+class AdminQuestionUpdate(BaseModel):
+    stage: Optional[str] = None
+    role: Optional[str] = None
+    difficulty: Optional[str] = None
+    education: Optional[str] = None
+    job_tag: Optional[str] = None
+    question: Optional[str] = None
+    reference: Optional[str] = None
+    status: Optional[str] = None
+
+
+class AdminQuestionGen(BaseModel):
+    job_title: str
+    role: str = "technical"
+    difficulty: str = "medium"
+    education: str = "any"
+    count: int = 6
+
+
+@router.get("/questions", response_model=list[AdminQuestionItem])
+def list_questions(
+    stage: str = "",
+    role: str = "",
+    difficulty: str = "",
+    status: str = "",
+    q: str = "",
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """题库列表（筛选：阶段/角色/难度/状态 + 关键词）。"""
+    stmt = select(QuestionBank).order_by(QuestionBank.id.desc()).limit(500)
+    if stage:
+        stmt = stmt.where(QuestionBank.stage == stage)
+    if role:
+        stmt = stmt.where(QuestionBank.role == role)
+    if difficulty:
+        stmt = stmt.where(QuestionBank.difficulty == difficulty)
+    if status:
+        stmt = stmt.where(QuestionBank.status == status)
+    if q:
+        like = f"%{q}%"
+        stmt = stmt.where(QuestionBank.question.like(like) | QuestionBank.job_tag.like(like))
+    rows = db.scalars(stmt).all()
+    return [
+        AdminQuestionItem(
+            id=r.id,
+            stage=r.stage,
+            role=r.role,
+            difficulty=r.difficulty,
+            education=r.education,
+            job_tag=r.job_tag or "",
+            question=r.question,
+            reference=r.reference or "",
+            source=r.source,
+            status=r.status,
+            used_count=r.used_count,
+            last_used_at=_fmt(r.last_used_at),
+            created_at=_fmt(r.created_at),
+        )
+        for r in rows
+    ]
+
+
+@router.post("/questions", response_model=AdminQuestionItem)
+def create_question(
+    body: AdminQuestionCreate,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """手工新增题目（默认 approved 直接可用）。"""
+    if body.stage not in VALID_Q_STAGES:
+        raise HTTPException(status_code=400, detail=f"不支持的阶段：{body.stage}")
+    if body.role not in VALID_Q_ROLES:
+        raise HTTPException(status_code=400, detail=f"不支持的角色：{body.role}")
+    if body.status not in VALID_Q_STATUS:
+        raise HTTPException(status_code=400, detail=f"不支持的状态：{body.status}")
+    text = body.question.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="题目内容不能为空")
+    row = QuestionBank(
+        stage=body.stage,
+        role=body.role,
+        difficulty=body.difficulty,
+        education=body.education,
+        job_tag=body.job_tag.strip(),
+        question=text,
+        reference=body.reference.strip(),
+        source="manual",
+        status=body.status,
+        content_hash=content_hash(text),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _question_item(row)
+
+
+@router.put("/questions/{question_id}", response_model=AdminQuestionItem)
+def update_question(
+    question_id: int,
+    body: AdminQuestionUpdate,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """编辑题目（改题目文本会重算去重哈希）。"""
+    row = db.get(QuestionBank, question_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="题目不存在")
+    if body.stage:
+        if body.stage not in VALID_Q_STAGES:
+            raise HTTPException(status_code=400, detail=f"不支持的阶段：{body.stage}")
+        row.stage = body.stage
+    if body.role:
+        if body.role not in VALID_Q_ROLES:
+            raise HTTPException(status_code=400, detail=f"不支持的角色：{body.role}")
+        row.role = body.role
+    if body.difficulty:
+        row.difficulty = body.difficulty
+    if body.education:
+        row.education = body.education
+    if body.job_tag is not None:
+        row.job_tag = body.job_tag.strip()
+    if body.question is not None:
+        text = body.question.strip()
+        if not text:
+            raise HTTPException(status_code=400, detail="题目内容不能为空")
+        row.question = text
+        row.content_hash = content_hash(text)
+    if body.reference is not None:
+        row.reference = body.reference.strip()
+    if body.status:
+        if body.status not in VALID_Q_STATUS:
+            raise HTTPException(status_code=400, detail=f"不支持的状态：{body.status}")
+        row.status = body.status
+    db.commit()
+    db.refresh(row)
+    return _question_item(row)
+
+
+@router.post("/questions/{question_id}/status", response_model=AdminQuestionItem)
+def set_question_status(
+    question_id: int,
+    body: AdminQuestionUpdate,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """状态流转：draft→approved（审核通过）/ disabled（下架）。"""
+    row = db.get(QuestionBank, question_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="题目不存在")
+    status = (body.status or "").strip()
+    if status not in VALID_Q_STATUS:
+        raise HTTPException(status_code=400, detail=f"不支持的状态：{status}")
+    row.status = status
+    db.commit()
+    db.refresh(row)
+    return _question_item(row)
+
+
+@router.delete("/questions/{question_id}")
+def delete_question(
+    question_id: int,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    row = db.get(QuestionBank, question_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="题目不存在")
+    db.delete(row)
+    db.commit()
+    return {"ok": True, "id": question_id}
+
+
+@router.post("/questions/generate")
+def generate_questions(
+    body: AdminQuestionGen,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """AI 批量出题入库（draft，待审核）。count 上限 10，防刷 token。"""
+    if body.count < 1 or body.count > 10:
+        raise HTTPException(status_code=400, detail="一次生成 1-10 道")
+    if body.role not in VALID_Q_ROLES:
+        raise HTTPException(status_code=400, detail=f"不支持的角色：{body.role}")
+
+    gen_prompt = (
+        f"【目标岗位】{body.job_title}\n"
+        f"【面试官角色】{ROLE_NAMES.get(body.role, body.role)}\n"
+        f"【难度】{body.difficulty}\n"
+        f"请为该岗位出 {body.count} 道高质量面试题（覆盖不同考点，不要重复），"
+        '只输出 JSON：{"questions": [{"stage": "basic/deep/stress 之一", '
+        '"question": "题目", "reference": "参考答案要点"}]}'
+    )
+    try:
+        from ..services.agents.question_agent import QuestionAgent
+        from ..services.ai_config_service import resolve_config
+
+        result = QuestionAgent(resolve_config(db, current.id)).chat_json(
+            gen_prompt,
+            system="你是资深面试官与命题专家。只依据用户给定的岗位与要求出题，只输出 JSON，不要任何额外文字。",
+            temperature=0.6,
+        )
+    except Exception as exc:
+        logger.exception("AI 批量出题失败")
+        raise HTTPException(status_code=502, detail=f"AI 出题失败：{exc}")
+
+    raw = result.get("questions") if isinstance(result, dict) else result
+    if not isinstance(raw, list):
+        raise HTTPException(status_code=502, detail="AI 返回结构异常，请重试")
+
+    added, skipped = 0, 0
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        stage = str(item.get("stage") or "basic").strip()
+        text = str(item.get("question") or "").strip()
+        if stage not in VALID_Q_STAGES or not text:
+            skipped += 1
+            continue
+        h = content_hash(text)
+        if db.scalar(select(func.count(QuestionBank.id)).where(QuestionBank.content_hash == h)):
+            skipped += 1
+            continue
+        db.add(
+            QuestionBank(
+                stage=stage,
+                role=body.role,
+                difficulty=body.difficulty,
+                education=body.education,
+                job_tag=body.job_title.strip()[:255],
+                question=text,
+                reference=str(item.get("reference") or ""),
+                source="ai_generated",
+                status="draft",
+                content_hash=h,
+            )
+        )
+        added += 1
+    db.commit()
+    return {"ok": True, "added": added, "skipped": skipped, "requested": body.count}
+
+
+def _question_item(row: QuestionBank) -> AdminQuestionItem:
+    return AdminQuestionItem(
+        id=row.id,
+        stage=row.stage,
+        role=row.role,
+        difficulty=row.difficulty,
+        education=row.education,
+        job_tag=row.job_tag or "",
+        question=row.question,
+        reference=row.reference or "",
+        source=row.source,
+        status=row.status,
+        used_count=row.used_count,
+        last_used_at=_fmt(row.last_used_at),
+        created_at=_fmt(row.created_at),
+    )

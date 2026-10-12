@@ -214,3 +214,78 @@ class MemberOrder(Base):
         DateTime, server_default=func.now(), nullable=False
     )
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class QuestionBank(Base):
+    """题库：沉淀面试题，面试组卡时优先复用（AI 生成 + 人工维护双轨）。"""
+
+    __tablename__ = "question_bank"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    stage: Mapped[str] = mapped_column(
+        String(16), nullable=False, comment="opening/basic/deep/stress/closing"
+    )
+    role: Mapped[str] = mapped_column(
+        String(16), nullable=False, comment="technical/HR/stress"
+    )
+    difficulty: Mapped[str] = mapped_column(
+        String(16), default="medium", nullable=False, comment="easy/medium/hard"
+    )
+    education: Mapped[str] = mapped_column(
+        String(16), default="any", nullable=False, comment="any/college/bachelor/master"
+    )
+    job_tag: Mapped[str] = mapped_column(
+        String(255), default="", nullable=False, comment="岗位关键词（空=通用）"
+    )
+    question: Mapped[str] = mapped_column(Text, nullable=False, comment="题目")
+    reference: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="参考答案要点"
+    )
+    source: Mapped[str] = mapped_column(
+        String(16), default="manual", nullable=False, comment="ai_generated/manual"
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), default="draft", nullable=False, comment="draft/approved/disabled"
+    )
+    content_hash: Mapped[str] = mapped_column(
+        String(64), index=True, nullable=False, comment="题目文本哈希（去重）"
+    )
+    used_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+
+
+class UserAIConfig(Base):
+    """用户自定义大模型配置（本地部署 / 云端 API），每个用户至多一条。
+
+    说明：user_id 有意不建库级外键（与 membership_codes / member_orders 同约定，
+    规避 MySQL 对部分 FK DDL 的 3780 兼容问题），删除用户时由 admin.delete_user
+    业务层清理。
+    """
+
+    __tablename__ = "user_ai_configs"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, unique=True, index=True, nullable=False, comment="所属用户 id"
+    )
+    provider_type: Mapped[str] = mapped_column(
+        String(16), default="cloud", nullable=False,
+        comment="部署方式：local（本地部署）/ cloud（云端 API）",
+    )
+    provider: Mapped[str] = mapped_column(
+        String(32), default="custom", nullable=False,
+        comment="服务商标识（ollama/openai/deepseek/dashscope/… 或 custom）",
+    )
+    base_url: Mapped[str] = mapped_column(
+        String(255), nullable=False, comment="OpenAI 兼容接口地址"
+    )
+    api_key: Mapped[str] = mapped_column(
+        String(512), default="", nullable=False, comment="API Key（本地部署可留空）"
+    )
+    model: Mapped[str] = mapped_column(String(128), nullable=False, comment="模型名称")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )

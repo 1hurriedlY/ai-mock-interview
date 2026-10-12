@@ -27,4 +27,9 @@ dist-ssr/
 
 # 工作区工具数据（本机记忆/临时产物，不入库）
 .workbuddy/
+.workbuddy-ai/
 .agents/
+skills-lock.json
+
+# 开发期脚本归档（本机保留，不入库）
+scripts/_archive/

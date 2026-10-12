@@ -60,15 +60,73 @@
       </label>
     </section>
 
+    <!-- 模型配置 -->
+    <section class="card group">
+      <h2>模型配置</h2>
+      <p class="cfg-state">
+        当前生效：
+        <b>{{ usingDefault ? '系统默认模型' : '自定义模型' }}</b>
+        <span v-if="usingDefault" class="tag">来自 .env</span>
+        <span v-else class="tag tag-on">{{ form.providerType === 'local' ? '本地部署' : '云端 API' }}</span>
+      </p>
+
+      <!-- 本地 / 云端 切换 -->
+      <div class="seg">
+        <button type="button" :class="{ on: form.providerType === 'local' }" @click="switchType('local')">
+          本地部署
+        </button>
+        <button type="button" :class="{ on: form.providerType === 'cloud' }" @click="switchType('cloud')">
+          云端 API
+        </button>
+      </div>
+
+      <label class="field">
+        <span class="lab">服务商</span>
+        <select v-model="form.provider" class="inp" @change="applyPreset">
+          <option v-for="p in presets[form.providerType] || []" :key="p.id" :value="p.id">{{ p.name }}</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span class="lab">接口地址</span>
+        <input v-model.trim="form.baseUrl" class="inp" placeholder="http://localhost:11434/v1" />
+      </label>
+
+      <label class="field">
+        <span class="lab">模型名称</span>
+        <input v-model.trim="form.model" class="inp" placeholder="qwen2.5:7b" />
+      </label>
+
+      <label class="field">
+        <span class="lab">API Key</span>
+        <input v-model.trim="form.apiKey" class="inp" type="password" :placeholder="keyPlaceholder" autocomplete="off" />
+      </label>
+
+      <p v-if="presetHint" class="cfg-hint">{{ presetHint }}</p>
+
+      <div class="cfg-actions">
+        <button type="button" class="act primary" :disabled="saving" @click="save">
+          {{ saving ? '保存中…' : '保存' }}
+        </button>
+        <button type="button" class="act" :disabled="testing" @click="test">
+          {{ testing ? '测试中…' : '测试连接' }}
+        </button>
+        <button type="button" class="act" :disabled="usingDefault" @click="reset">恢复默认</button>
+      </div>
+
+      <p v-if="msg" class="cfg-msg" :class="msgOk ? 'ok' : 'err'">{{ msg }}</p>
+    </section>
+
     <p class="foot-note">「模拟面试 AI 助手」· 数据仅存于你的服务器 · v0.1</p>
   </div>
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { authState } from '../store/auth'
 import { avatarStyle, initialsOf } from '../utils/avatar'
 import { Settings } from '../utils/settings'
+import { aiConfigApi } from '../api'
 
 const auth = authState
 const initials = ref(initialsOf(auth.username))
@@ -99,9 +157,128 @@ function setRole(v) {
   emit('defaultRole', v)
 }
 
+// ---------- 模型配置（自定义大模型：本地部署 / 云端 API） ----------
+const usingDefault = ref(true)
+const presets = ref({ local: [], cloud: [] })
+const form = reactive({
+  providerType: 'cloud',
+  provider: 'dashscope',
+  baseUrl: '',
+  model: '',
+  apiKey: '',
+})
+const hasKey = ref(false)
+const saving = ref(false)
+const testing = ref(false)
+const msg = ref('')
+const msgOk = ref(false)
+
+const keyPlaceholder = computed(() => (hasKey.value ? '已保存，留空表示不修改' : 'sk-...'))
+const presetHint = computed(() => {
+  const p = (presets.value[form.providerType] || []).find((x) => x.id === form.provider)
+  return p?.hint || ''
+})
+
+async function loadAIConfig() {
+  try {
+    const data = await aiConfigApi.get()
+    presets.value = data.presets || { local: [], cloud: [] }
+    usingDefault.value = !!data.using_default
+    const cfg = data.config || data.default || {}
+    form.providerType = cfg.provider_type || 'cloud'
+    form.provider = cfg.provider || 'custom'
+    form.baseUrl = cfg.base_url || ''
+    form.model = cfg.model || ''
+    hasKey.value = !!cfg.has_key
+    form.apiKey = ''
+  } catch (e) {
+    msg.value = e.response?.data?.detail || '加载模型配置失败'
+    msgOk.value = false
+  }
+}
+
+function switchType(t) {
+  if (form.providerType === t) return
+  form.providerType = t
+  const list = presets.value[t] || []
+  if (list.length) {
+    form.provider = list[0].id
+    applyPreset()
+  }
+}
+
+function applyPreset() {
+  const p = (presets.value[form.providerType] || []).find((x) => x.id === form.provider)
+  if (!p) return
+  if (p.base_url) form.baseUrl = p.base_url
+  if (p.model) form.model = p.model
+}
+
+async function save() {
+  if (!form.baseUrl || !form.model) {
+    msg.value = '接口地址与模型名称不能为空'
+    msgOk.value = false
+    return
+  }
+  saving.value = true
+  msg.value = ''
+  try {
+    const res = await aiConfigApi.save({
+      provider_type: form.providerType,
+      provider: form.provider,
+      base_url: form.baseUrl,
+      model: form.model,
+      api_key: form.apiKey,
+    })
+    hasKey.value = !!res.config?.has_key
+    form.apiKey = ''
+    usingDefault.value = false
+    msg.value = '已保存，后续面试、简历分析与报告将使用该模型'
+    msgOk.value = true
+  } catch (e) {
+    msg.value = e.response?.data?.detail || '保存失败'
+    msgOk.value = false
+  } finally {
+    saving.value = false
+  }
+}
+
+async function testConn() {
+  testing.value = true
+  msg.value = ''
+  try {
+    const res = await aiConfigApi.test({
+      base_url: form.baseUrl,
+      model: form.model,
+      api_key: form.apiKey,
+    })
+    msg.value = res.message || (res.ok ? '连接成功' : '连接失败')
+    msgOk.value = !!res.ok
+  } catch (e) {
+    msg.value = e.response?.data?.detail || '测试失败'
+    msgOk.value = false
+  } finally {
+    testing.value = false
+  }
+}
+
+async function reset() {
+  msg.value = ''
+  try {
+    await aiConfigApi.clear()
+    await loadAIConfig()
+    msg.value = '已恢复系统默认模型'
+    msgOk.value = true
+  } catch (e) {
+    msg.value = e.response?.data?.detail || '恢复失败'
+    msgOk.value = false
+  }
+}
+
 onMounted(() => {
   applyReduce()
   document.addEventListener('keydown', onKey)
+  loadAIConfig()
 })
 function onKey(e) {
   if (e.key === 'Escape') window.history.back()
@@ -221,5 +398,82 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
 }
 .sw input:checked + i { background: var(--ink); }
 .sw input:checked + i::after { transform: translateX(18px); }
+/* ---------- 模型配置 ---------- */
+.cfg-state {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cfg-state b { color: var(--ink); font-weight: 650; }
+.tag {
+  font-size: 11px;
+  padding: 2px 9px;
+  border-radius: var(--radius-chip);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.tag-on { color: var(--ink); border-color: var(--ink); }
+.seg {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  margin-bottom: 14px;
+}
+.seg button {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 7px 20px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.seg button.on { background: var(--card); color: var(--ink); box-shadow: var(--shadow-sm); }
+.field { display: flex; align-items: center; gap: 14px; padding: 9px 2px; }
+.lab { font-size: 13.5px; color: var(--text-secondary); width: 76px; flex-shrink: 0; }
+.inp {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-soft);
+  color: var(--ink);
+  font-size: 13.5px;
+  font-family: inherit;
+  transition: var(--transition);
+}
+.inp:focus { outline: none; border-color: var(--ink); background: var(--card); }
+.cfg-hint { font-size: 12px; color: var(--text-muted); margin: 6px 0 0 90px; line-height: 1.5; }
+.cfg-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.act {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 9px 20px;
+  border-radius: var(--radius-chip);
+  cursor: pointer;
+  transition: var(--transition);
+}
+.act:hover:not(:disabled) { color: var(--ink); border-color: var(--ink); }
+.act:disabled { opacity: 0.45; cursor: not-allowed; }
+.act.primary { background: var(--ink); color: var(--card); border-color: var(--ink); }
+.act.primary:hover:not(:disabled) { opacity: 0.88; }
+.cfg-msg { font-size: 13px; margin: 12px 0 0; line-height: 1.5; }
+.cfg-msg.ok { color: var(--ink); }
+.cfg-msg.err { color: var(--danger-text); }
+
 .foot-note { text-align: center; color: var(--text-muted); font-size: 12px; margin-top: 18px; }
 </style>
